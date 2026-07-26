@@ -1,0 +1,25 @@
+appId: dev.aiworkspaces.app
+productName: AI Workspaces
+copyright: Copyright © 2026
+directories:
+  output: release
+  buildResources: build
+npmRebuild: false
+files:
+  - out/**
+  - package.json
+# node-pty ships N-API prebuilds, so it is unpacked rather than rebuilt.
+asarUnpack:
+  - '**/node_modules/node-pty/**'
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  artifactName: ${productName}-${version}-${arch}.${ext}
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+publish: null
