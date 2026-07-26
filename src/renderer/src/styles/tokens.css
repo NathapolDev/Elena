@@ -1,0 +1,128 @@
+/*
+ * Semantic design tokens. Components must never hard-code a theme colour
+ * (Shared UI specification) — switching `data-theme` on <html> is the only
+ * thing that repaints the app, which is what keeps FR-25 cheap: no remount,
+ * no process restart, no buffer loss.
+ */
+
+:root {
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius-pane: 8px;
+  --radius-control: 6px;
+
+  --titlebar-height: 40px;
+  --commandbar-height: 52px;
+  --sidebar-width: 264px;
+  --inspector-width: 210px;
+  --pane-header-height: 44px;
+  --statusbar-height: 42px;
+
+  --font-ui: 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Mono', 'Consolas', ui-monospace, monospace;
+
+  --font-size-sm: 12px;
+  --font-size-md: 13px;
+  --font-size-lg: 15px;
+
+  --transition-theme: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+:root[data-theme='dark'] {
+  /* Makes Chromium paint native scrollbars and form controls to match. */
+  color-scheme: dark;
+
+  --bg: #0b1118;
+  --surface: #111a24;
+  --surface-elevated: #17212c;
+  --surface-hover: #1c2836;
+  --divider: #263341;
+  --primary: #2f80ed;
+  --primary-contrast: #ffffff;
+  --active-terminal: #28c7fa;
+  --status-running: #67d36f;
+  --status-waiting: #f2b94b;
+  --status-error: #ef6258;
+  --text-primary: #e7edf4;
+  --text-secondary: #98a7b7;
+  --focus-ring: #28c7fa;
+  --shadow-pane: 0 8px 24px rgb(0 0 0 / 45%);
+
+  --term-bg: #0b1118;
+  --term-fg: #e7edf4;
+  --term-cursor: #28c7fa;
+  --term-selection: rgb(47 128 237 / 35%);
+
+  /* ANSI 0-15. Tuned for a dark background: every hue clears 4.5:1 against
+     --term-bg except `black`, which is the dim/de-emphasis slot by design. */
+  --term-black: #6b7684;
+  --term-red: #ff7b72;
+  --term-green: #69d97e;
+  --term-yellow: #e3b341;
+  --term-blue: #79b8ff;
+  --term-magenta: #d2a8ff;
+  --term-cyan: #56d4dd;
+  --term-white: #c9d1d9;
+  --term-bright-black: #8b949e;
+  --term-bright-red: #ffa198;
+  --term-bright-green: #8ae294;
+  --term-bright-yellow: #f2cc60;
+  --term-bright-blue: #a5d6ff;
+  --term-bright-magenta: #e2c5ff;
+  --term-bright-cyan: #8ce8ef;
+  --term-bright-white: #f0f6fc;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+
+  --bg: #f5f7fa;
+  --surface: #ffffff;
+  --surface-elevated: #eef2f6;
+  --surface-hover: #e4eaf1;
+  --divider: #ccd4e0;
+  --primary: #1558c4;
+  --primary-contrast: #ffffff;
+  --active-terminal: #0b5f8a;
+  --status-running: #12692f;
+  --status-waiting: #7d4e00;
+  --status-error: #b91626;
+  --text-primary: #1f2328;
+  /* 7.7:1 on --surface and 6.9:1 on --surface-elevated: secondary text stays
+     legible on both, which #59636e did not manage on the elevated fill. */
+  --text-secondary: #4a545e;
+  --focus-ring: #0b5f8a;
+  --shadow-pane: 0 8px 24px rgb(31 35 40 / 12%);
+
+  --term-bg: #ffffff;
+  --term-fg: #1f2328;
+  --term-cursor: #0369a1;
+  --term-selection: rgb(31 111 235 / 22%);
+
+  /* ANSI 0-15, re-derived for a white background. xterm's built-in palette is
+     tuned for dark terminals — its bright yellow/green/cyan and both white
+     slots are unreadable here — so light mode gets darkened, saturated hues.
+     Every value clears 4.5:1 against --term-bg. `bright-white` is the most
+     prominent slot, so on white it must be the *darkest*, not the lightest. */
+  --term-black: #24292f;
+  --term-red: #cf222e;
+  --term-green: #116329;
+  --term-yellow: #7d4e00;
+  --term-blue: #0550ae;
+  --term-magenta: #8250df;
+  --term-cyan: #0e7490;
+  --term-white: #6e7781;
+  --term-bright-black: #57606a;
+  --term-bright-red: #a40e26;
+  --term-bright-green: #1a7f37;
+  --term-bright-yellow: #9a6700;
+  --term-bright-blue: #0969da;
+  --term-bright-magenta: #6639ba;
+  --term-bright-cyan: #1b7c83;
+  --term-bright-white: #1f2328;
+}
