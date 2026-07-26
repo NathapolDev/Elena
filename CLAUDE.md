@@ -1,0 +1,124 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Project
+
+AI Workspaces — a local-only Windows 11 x64 Electron desktop app that runs and supervises multiple shell / CLI-agent
+sessions (Claude Code, Codex CLI, plain shells) in persisted tabs and split panes. React 19 renderer, `node-pty` for
+real PTYs, `electron-vite` build, no network features.
+
+## Commands
+
+```powershell
+npm ci
+npm run dev            # electron-vite dev with HMR renderer
+npm run lint           # eslint (flat config)
+npm run typecheck      # both projects: tsconfig.node.json + tsconfig.web.json
+npm test               # vitest run (tests/**/*.test.ts)
+npm run build          # typecheck + electron-vite build -> out/
+npm run test:e2e       # playwright + Electron; requires a prior `npm run build`
+npm run build:win      # build + electron-builder NSIS installer -> release/
+```
+
+Single test / focused runs:
+
+```powershell
+npx vitest run tests/layout.test.ts
+npx vitest run -t "leaves no orphan process behind"
+npx playwright test -g "opens a shell"
+```
+
+E2E against the packaged app (part of the release gate in `RELEASE.md`):
+
+```powershell
+$env:AIWS_E2E_EXECUTABLE = "$PWD\release\win-unpacked\AI Workspaces.exe"
+npm run test:e2e
+```
+
+CI (`.github/workflows/ci.yml`, `windows-latest`) runs lint → test → build → e2e → `build:win` in that order; keep all
+five green.
+
+## Architecture
+
+Three processes, one contract. `src/shared/` is the only code imported by all of them.
+
+**`src/shared/ipc.ts` is the contract.** Adding a feature that crosses the process boundary means editing four places
+in lockstep, and skipping any one of them fails at compile time or at runtime validation:
+
+1. `Commands` / `Events` type in `src/shared/ipc.ts`
+2. the channel name in the `COMMAND_CHANNELS` / `EVENT_CHANNELS` arrays (the preload refuses anything not listed)
+3. a Zod payload schema in `requestSchemas` (`src/shared/schemas.ts`)
+4. a handler in `src/main/ipc/register.ts`
+
+**Main (`src/main/`)** owns every privileged effect. `ipc/bus.ts` wraps `ipcMain.handle`: it rejects untrusted senders,
+Zod-validates the payload, and converts thrown errors into a typed `Result<T>` — raw errors never cross the boundary,
+so handlers return `ok(...)` / `fail(code, message, action)` and never throw at the renderer. `ipc/register.ts` is the
+single place renderer intent becomes filesystem or process effects.
+
+**`PtyManager` (`src/main/pty/PtyManager.ts`)** is the sole owner of child processes and deliberately Electron-free so
+`tests/pty.test.ts` can drive real PTYs without a window. Key invariants: `create` is idempotent per terminal id (panes
+remount on split/zoom/StrictMode); output is batched on a 16 ms flush with a 4 MB backpressure cap; `terminate` sends
+`\x03` then force-kills after 2 s; a stale `onExit` from a restarted id is dropped; `disposeAll()` runs on `before-quit`
+and on renderer navigation so no child ever outlives the app.
+
+**Preload (`src/preload/index.ts`)** exposes exactly `invoke`, `subscribe`, `platform` on `window.aiWorkspaces`. No
+generic `send`/`on`. Sandboxed, so it is built as CJS (`index.cjs`) — see the comment in `electron.vite.config.ts`.
+
+**Persistence (`src/main/store/`)** — `workspaces.json`, `settings.json`, `presets.json` under Electron `userData`.
+All writes go through `atomicJson.ts` (temp file + rename; a failed write leaves the last good file intact). Reads are
+Zod-validated; an invalid file is renamed to `*.corrupt-<ts>.bak` and the store falls back to defaults rather than
+refusing to start. Workspace writes are debounced 400 ms, flushed synchronously on quit. `WORKSPACE_SCHEMA_VERSION` is
+2; bump it plus `migrateWorkspaceFile` when the persisted shape changes.
+
+**Renderer (`src/renderer/src/`)** — one Zustand store (`state/store.ts`) holds persisted workspace state and ephemeral
+runtime state (`sessions`, `unread`) side by side; only the former round-trips to disk. `lib/api.ts` unwraps `Result<T>`
+into a value or an `ApiError`, so components never branch on `{ ok }`.
+
+Two renderer patterns matter more than the component tree:
+
+- **`lib/terminalRegistry.ts`** owns xterm instances *outside* React. Each terminal owns a detached DOM node that
+  `TerminalPane` adopts on mount and hands back on unmount, so splitting, zooming, tab switches and StrictMode
+  double-mounts never destroy the scrollback. Only `closeTerminal` calls `releaseTerminal`. xterm cannot read CSS
+  variables, so the full `ITheme` (including all 16 ANSI slots) is resolved from tokens and repainted in place by
+  `applyThemeToAll()`.
+- **`lib/terminalBus.ts`** is a single `terminal:data` listener fanning out to panes, with a backlog for output that
+  arrives before a pane mounts. Never subscribe to `terminal:data` per pane.
+
+**Layout (`src/shared/layout.ts`)** is a pure recursive tree (`terminal` | `split` | `tabs`) with no DOM or Electron
+imports, unit-tested in `tests/layout.test.ts`. The "Spatial Agent Grid" (`buildSpatialGrid`) paginates >4 terminals
+into balanced pages using the existing `tabs` node — it adds no schema. `pruneLayout` runs on every load and update so
+a layout can never reference a missing terminal.
+
+## Conventions that are load-bearing
+
+- **Restored sessions are configuration, not processes.** A relaunched terminal shows *Not started* until the user
+  starts it; `RuntimeSession` is never persisted. Do not add auto-restart.
+- **No shell string composition.** Spawn is always executable + argv array. `security/paths.ts` resolves the executable
+  itself (PATH + PATHEXT) so a missing binary raises `EXECUTABLE_NOT_FOUND` instead of an opaque spawn failure.
+- **Env is an allowlist of names only.** Presets store variable *names*; values are read from the live OS environment
+  at spawn time and never written to disk. `buildChildEnv` adds a fixed base set on top.
+- **Nothing outside the workspace project root.** `validateDirectory(path, mustBeInside)` gates cwd choices; deleting
+  a workspace touches app configuration only, never files under `projectRoot`.
+- **Logging is metadata only** (`src/main/logger.ts`). Terminal I/O, keystrokes and env values must never be logged;
+  the logger sanitizes strings, redacts token-shaped values and sensitive keys, and size-caps fields. If a new log call
+  could carry a PTY chunk, don't add it.
+- **Renderer security posture is fixed**: sandbox on, context isolation on, Node integration off, strict CSP in
+  packaged builds, navigation/new-window/webview blocked. Don't relax these to make something work.
+- **No hard-coded colors in components.** Everything comes from `styles/tokens.css`; theme switching is a single
+  `data-theme` flip on `<html>` — no remount, no buffer loss.
+- Path aliases: `@shared/*` (all three processes) and `@renderer/*` (renderer only). Configured separately in
+  `electron.vite.config.ts`, both tsconfigs, and `vitest.config.ts` — add new aliases to all of them.
+- Comments in this codebase cite requirement ids (`FR-03`, `NFR-08`, …) from a spec that is not committed. Treat them
+  as rationale markers; preserve them when editing nearby code, and don't invent new ids.
+
+## Testing
+
+- `tests/` (vitest, node env) covers layout tree ops, path/env validation, schemas, persistence and real PTY lifecycle.
+  Electron is stubbed via `tests/stubs/electron.ts` (only `app.getPath` and `nativeTheme`) — main-process modules should
+  stay testable through that stub.
+- `e2e/smoke.spec.ts` is one serial user journey (create workspace → real PTY → split → theme switch → restart → quit
+  without orphans) against a temp `--user-data-dir`. Electron automation is experimental, so E2E covers user flows only;
+  layout, PTY and persistence guarantees are proven by vitest.
+- `design-qa.md` records the visual QA pass for the Spatial Agent Grid against a reference image; update it if you
+  change that layout's composition.
