@@ -16,6 +16,12 @@
 
 Elena is a local-only Windows desktop workspace for running shells and CLI agents side by side. It preserves workspace configuration, terminal tabs, and split layouts between launches while keeping project files and processes under your control.
 
+## Download
+
+[**Download the latest Elena installer for Windows 11 x64**](https://github.com/NathapolDev/Elena/releases/latest)
+
+Under **Assets**, download `Elena-<version>-x64.exe` and run it. Elena is not yet code-signed, so Windows may display a reputation warning during installation.
+
 ## Highlights
 
 - **Multiple sessions, one workspace** — supervise shells, Codex CLI, Claude Code, and other local CLI tools together.
