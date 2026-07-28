@@ -39,6 +39,7 @@ export function App(): React.JSX.Element {
   const workspace = useStore(selectActiveWorkspace)
   const activeTerminalId = useStore((s) => s.activeTerminalId)
   const zoomedTerminalId = useStore((s) => s.zoomedTerminalId)
+  const pendingCloseTerminalId = useStore((s) => s.pendingCloseTerminalId)
   const resolvedTheme = useStore((s) => s.resolvedTheme)
   const scrollback = useStore((s) => s.settings.scrollback)
 
@@ -50,7 +51,9 @@ export function App(): React.JSX.Element {
   const activateTab = useStore((s) => s.activateTab)
   const cycleTerminal = useStore((s) => s.cycleTerminal)
   const toggleZoom = useStore((s) => s.toggleZoom)
-  const closeTerminal = useStore((s) => s.closeTerminal)
+  const requestTerminalClose = useStore((s) => s.requestTerminalClose)
+  const cancelTerminalClose = useStore((s) => s.cancelTerminalClose)
+  const confirmTerminalClose = useStore((s) => s.confirmTerminalClose)
   const stopTerminal = useStore((s) => s.stopTerminal)
   const deleteWorkspace = useStore((s) => s.deleteWorkspace)
   const arrangeSpatialGrid = useStore((s) => s.arrangeSpatialGrid)
@@ -133,10 +136,10 @@ export function App(): React.JSX.Element {
         id: 'close',
         label: 'Close focused terminal',
         hint: 'Ctrl+W',
-        run: () => activeTerminalId && void closeTerminal(activeTerminalId)
+        run: () => activeTerminalId && requestTerminalClose(activeTerminalId)
       }
     ],
-    [activeTerminalId, arrangeSpatialGrid, closeTerminal, cycleTerminal, stopTerminal, toggleZoom]
+    [activeTerminalId, arrangeSpatialGrid, cycleTerminal, requestTerminalClose, stopTerminal, toggleZoom]
   )
 
   /* ---------- keyboard shortcuts (FR-21) ---------- */
@@ -194,7 +197,7 @@ export function App(): React.JSX.Element {
       }
       if (key === 'w' && activeTerminalId) {
         event.preventDefault()
-        void closeTerminal(activeTerminalId)
+        requestTerminalClose(activeTerminalId)
         return
       }
       if (key === 'z' && event.shiftKey && activeTerminalId) {
@@ -212,7 +215,7 @@ export function App(): React.JSX.Element {
         cycleTerminal(-1)
       }
     },
-    [activeTerminalId, closeTerminal, cycleTerminal, toggleZoom, workspace]
+    [activeTerminalId, cycleTerminal, requestTerminalClose, toggleZoom, workspace]
   )
 
   useEffect(() => {
@@ -226,6 +229,9 @@ export function App(): React.JSX.Element {
     : undefined
   const activeConfig = activeTerminalId
     ? workspace?.terminals.find((t) => t.id === activeTerminalId)
+    : undefined
+  const pendingCloseConfig = pendingCloseTerminalId
+    ? workspace?.terminals.find((t) => t.id === pendingCloseTerminalId)
     : undefined
   const bodyClassName = [
     'app__body',
@@ -384,6 +390,16 @@ export function App(): React.JSX.Element {
             setModal('none')
             void deleteWorkspace(workspace.id)
           }}
+        />
+      )}
+      {pendingCloseTerminalId && (
+        <ConfirmDialog
+          title="Close running session?"
+          body={`"${pendingCloseConfig?.title ?? 'This session'}" is still running. Closing it will terminate the process.`}
+          confirmLabel="Terminate and close"
+          tone="danger"
+          onCancel={cancelTerminalClose}
+          onConfirm={() => void confirmTerminalClose()}
         />
       )}
       <Toasts />

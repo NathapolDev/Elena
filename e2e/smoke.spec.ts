@@ -5,7 +5,7 @@
  * create a workspace, run a command in a real PTY, split panes, switch theme
  * without disturbing the session, restart, and quit without orphans.
  */
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
@@ -34,6 +34,7 @@ test.beforeAll(async () => {
   projectRoot = mkdtempSync(join(tmpdir(), 'elena-e2e-project-'))
   userData = mkdtempSync(join(tmpdir(), 'elena-e2e-userdata-'))
   writeFileSync(join(projectRoot, 'MARKER.txt'), 'do not delete me')
+  mkdirSync(join(projectRoot, 'preset-cwd'))
 
   app = await launchApp()
   page = await app.firstWindow()
@@ -239,13 +240,14 @@ test('selects all and clears terminal output', async () => {
   await expect(pane.locator('.xterm-rows')).not.toContainText('E2E_MARKER_OK')
 })
 
-test('creates, edits, duplicates, and deletes a custom preset', async () => {
+test('creates, edits, launches, duplicates, and deletes a custom preset', async () => {
   await page.getByRole('button', { name: 'Settings' }).click()
   await page.getByRole('button', { name: 'New preset', exact: true }).click()
   const editor = page.getByLabel('Preset editor')
   await editor.getByLabel('Name', { exact: true }).fill('E2E Agent')
   await editor.getByLabel('Executable').fill('pwsh.exe')
   await editor.getByLabel('Arguments (one per line)').fill('-NoLogo')
+  await editor.getByLabel('Default working directory (relative to project root)').fill('preset-cwd')
   await editor.getByRole('button', { name: 'Save preset' }).click()
   await expect(page.getByText('E2E Agent', { exact: true })).toBeVisible()
 
@@ -260,6 +262,21 @@ test('creates, edits, duplicates, and deletes a custom preset', async () => {
 
   await page.getByRole('button', { name: 'Delete E2E Agent Updated Copy' }).click()
   await expect(page.getByText('E2E Agent Updated Copy', { exact: true })).toHaveCount(0)
+  await page.getByRole('button', { name: 'Done' }).click()
+
+  await page.getByRole('button', { name: 'New Terminal' }).first().click()
+  await page.getByLabel('Shell or agent').selectOption({ label: 'E2E Agent Updated' })
+  await expect(page.getByLabel('Working directory')).toHaveValue('preset-cwd')
+  await page.getByRole('button', { name: 'Open terminal' }).click()
+
+  const presetPane = page.locator('.pane--active')
+  await expect(presetPane.locator('.pane__cwd')).toContainText('cwd: preset-cwd')
+  await presetPane.getByRole('button', { name: 'More session actions' }).click()
+  await presetPane.getByRole('menuitem', { name: 'Close' }).click()
+  await page.getByRole('button', { name: 'Terminate and close' }).click()
+  await expect(page.locator('.pane')).toHaveCount(4)
+
+  await page.getByRole('button', { name: 'Settings' }).click()
   await page.getByRole('button', { name: 'Delete E2E Agent Updated' }).click()
   await page.getByRole('button', { name: 'Done' }).click()
 })
@@ -293,6 +310,20 @@ test('closing a running session asks for confirmation', async () => {
   await page.getByRole('button', { name: 'Settings' }).click()
   await expect(page.getByLabel('Confirm before closing a running session')).toBeChecked()
   await page.getByRole('button', { name: 'Done' }).click()
+
+  await pane.locator('.xterm-screen').click()
+  await page.keyboard.press('Control+KeyW')
+  await expect(page.getByRole('alertdialog')).toContainText('is still running')
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.locator('.pane')).toHaveCount(4)
+
+  await page.keyboard.press('Control+KeyK')
+  await page.getByLabel('Search commands').fill('Close focused terminal')
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('alertdialog')).toContainText('is still running')
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel' }).click()
+  await expect(page.locator('.pane')).toHaveCount(4)
+
   await pane.getByRole('button', { name: 'More session actions' }).click()
   await pane.getByRole('menuitem', { name: 'Close' }).click()
 

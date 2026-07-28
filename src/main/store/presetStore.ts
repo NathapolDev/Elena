@@ -82,17 +82,16 @@ export class PresetStore {
 
   create(input: Omit<AgentPreset, 'id' | 'builtIn'>): AgentPreset {
     const preset: AgentPreset = { ...input, id: randomUUID(), builtIn: false }
-    this.file.presets.push(preset)
-    this.save()
+    this.commit([...this.file.presets, preset])
     return structuredClone(preset)
   }
 
   update(id: string, patch: Partial<Omit<AgentPreset, 'id' | 'builtIn'>>): AgentPreset | undefined {
     const preset = this.file.presets.find((p) => p.id === id)
     if (!preset) return undefined
-    Object.assign(preset, patch)
-    this.save()
-    return structuredClone(preset)
+    const updated = { ...preset, ...patch }
+    this.commit(this.file.presets.map((item) => (item.id === id ? updated : item)))
+    return structuredClone(updated)
   }
 
   /** Built-in presets cannot be deleted; they are reset instead (FR-19). */
@@ -100,23 +99,24 @@ export class PresetStore {
     const index = this.file.presets.findIndex((p) => p.id === id)
     if (index === -1) return false
     if (this.file.presets[index]?.builtIn) return false
-    this.file.presets.splice(index, 1)
-    this.save()
+    this.commit(this.file.presets.filter((p) => p.id !== id))
     return true
   }
 
   resetBuiltIns(): AgentPreset[] {
     const custom = this.file.presets.filter((p) => !p.builtIn)
-    this.file.presets = [...structuredClone(BUILT_IN_PRESETS), ...custom]
-    this.save()
+    this.commit([...structuredClone(BUILT_IN_PRESETS), ...custom])
     return this.list()
   }
 
-  private save(): void {
+  private commit(presets: AgentPreset[]): void {
+    const next: PresetsFile = { ...this.file, presets }
     try {
-      writeJsonFileAtomic(this.filePath, this.file)
+      writeJsonFileAtomic(this.filePath, next)
     } catch (error) {
       logger.error('presets.save-failed', { error })
+      throw error
     }
+    this.file = next
   }
 }

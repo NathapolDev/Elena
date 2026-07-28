@@ -39,7 +39,7 @@ export class PtyManager {
 
   constructor(private readonly events: PtyEvents) {}
 
-  create(config: TerminalConfig, cols: number, rows: number): CreateResult {
+  create(config: TerminalConfig, cols: number, rows: number, workspaceRoot: string): CreateResult {
     // Idempotent: a pane can remount (split, zoom, StrictMode) and ask again for
     // a session it already owns. Returning the live one avoids a second child.
     const existing = this.sessions.get(config.id)
@@ -51,7 +51,7 @@ export class PtyManager {
       this.dispose(config.id)
     }
 
-    const cwdCheck = validateDirectory(config.cwd)
+    const cwdCheck = validateDirectory(config.cwd, workspaceRoot)
     if (!cwdCheck.ok) {
       return {
         ok: false,

@@ -41,12 +41,17 @@ export class SettingsStore {
   }
 
   update(patch: Partial<AppSettings>): AppSettings {
-    this.file.settings = { ...this.file.settings, ...patch }
+    const next: SettingsFile = {
+      ...this.file,
+      settings: { ...this.file.settings, ...patch }
+    }
     try {
-      writeJsonFileAtomic(this.filePath, this.file)
+      writeJsonFileAtomic(this.filePath, next)
     } catch (error) {
       logger.error('settings.save-failed', { error })
+      throw error
     }
+    this.file = next
     return this.get()
   }
 }

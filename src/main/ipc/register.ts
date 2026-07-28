@@ -85,7 +85,7 @@ export function registerIpcHandlers(deps: Deps): void {
       const config = workspace.terminals.find((t) => t.id === terminalId)
       if (!config) return fail('NOT_FOUND', 'Terminal configuration not found.')
 
-      const result = pty.create(config, cols, rows)
+      const result = pty.create(config, cols, rows, workspace.projectRoot)
       if (!result.ok) {
         logger.warn('terminal.create-failed', { terminalId, code: result.error.code })
         return { ok: false, error: result.error }
@@ -115,14 +115,15 @@ export function registerIpcHandlers(deps: Deps): void {
     requestSchemas['terminal:restart'],
     async ({ terminalId, cols, rows }) => {
       const workspace = workspaces.list().find((w) => w.terminals.some((t) => t.id === terminalId))
-      const config = workspace?.terminals.find((t) => t.id === terminalId)
+      if (!workspace) return fail('NOT_FOUND', 'Workspace not found.')
+      const config = workspace.terminals.find((t) => t.id === terminalId)
       if (!config) return fail('NOT_FOUND', 'Terminal configuration not found.')
 
       pty.dispose(terminalId)
       // Give the OS a tick to release the pipe before rebinding the same id.
       await new Promise((resolve) => setTimeout(resolve, 50))
 
-      const result = pty.create(config, cols, rows)
+      const result = pty.create(config, cols, rows, workspace.projectRoot)
       if (!result.ok) return { ok: false, error: result.error }
       logger.info('terminal.restarted', { terminalId, pid: result.session.pid })
       return ok(result.session)

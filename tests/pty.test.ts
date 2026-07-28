@@ -75,7 +75,7 @@ function processExists(pid: number): boolean {
 describe('PtyManager', () => {
   it('reports EXECUTABLE_NOT_FOUND instead of throwing', () => {
     const { manager } = harness()
-    const result = manager.create(config('missing', { executable: 'definitely-not-real-xyz' }), 80, 24)
+    const result = manager.create(config('missing', { executable: 'definitely-not-real-xyz' }), 80, 24, dir)
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.code).toBe('EXECUTABLE_NOT_FOUND')
     manager.disposeAll()
@@ -83,7 +83,15 @@ describe('PtyManager', () => {
 
   it('reports INVALID_CWD for a directory that does not exist', () => {
     const { manager } = harness()
-    const result = manager.create(config('bad-cwd', { cwd: join(dir, 'nope') }), 80, 24)
+    const result = manager.create(config('bad-cwd', { cwd: join(dir, 'nope') }), 80, 24, dir)
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.code).toBe('INVALID_CWD')
+    manager.disposeAll()
+  })
+
+  it('rejects a working directory outside the workspace root', () => {
+    const { manager } = harness()
+    const result = manager.create(config('outside-cwd', { cwd: tmpdir() }), 80, 24, dir)
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.code).toBe('INVALID_CWD')
     manager.disposeAll()
@@ -91,7 +99,7 @@ describe('PtyManager', () => {
 
   it('spawns a shell, runs a command and streams the output', async () => {
     const { manager, output } = harness()
-    const result = manager.create(config('echo'), 80, 24)
+    const result = manager.create(config('echo'), 80, 24, dir)
     expect(result.ok).toBe(true)
 
     manager.write('echo', 'echo PTY_MARKER_OK\r')
@@ -103,8 +111,8 @@ describe('PtyManager', () => {
 
   it('is idempotent: creating an already-running id returns the same session', () => {
     const { manager } = harness()
-    const first = manager.create(config('dup'), 80, 24)
-    const second = manager.create(config('dup'), 100, 30)
+    const first = manager.create(config('dup'), 80, 24, dir)
+    const second = manager.create(config('dup'), 100, 30, dir)
     expect(first.ok && second.ok).toBe(true)
     if (first.ok && second.ok) expect(second.session.pid).toBe(first.session.pid)
     expect(manager.runningCount()).toBe(1)
@@ -113,7 +121,7 @@ describe('PtyManager', () => {
 
   it('accepts a resize while running', async () => {
     const { manager } = harness()
-    manager.create(config('resize'), 80, 24)
+    manager.create(config('resize'), 80, 24, dir)
     expect(manager.resize('resize', 120, 40)).toBe(true)
     manager.disposeAll()
     await waitFor(() => manager.runningCount() === 0)
@@ -121,7 +129,7 @@ describe('PtyManager', () => {
 
   it('emits exit with a status change when the process ends on its own', async () => {
     const { manager, exits, statuses } = harness()
-    manager.create(config('exiting'), 80, 24)
+    manager.create(config('exiting'), 80, 24, dir)
     manager.write('exiting', 'exit\r')
 
     await waitFor(() => exits.length > 0)
@@ -133,7 +141,7 @@ describe('PtyManager', () => {
 
   it('terminate stops a running session', async () => {
     const { manager, exits } = harness()
-    const result = manager.create(config('terminate-me'), 80, 24)
+    const result = manager.create(config('terminate-me'), 80, 24, dir)
     expect(result.ok).toBe(true)
 
     manager.terminate('terminate-me', { force: true })
@@ -144,11 +152,11 @@ describe('PtyManager', () => {
 
   it('ignores a stale exit after replacing a terminal with the same id', async () => {
     const { manager, statuses, exits } = harness()
-    const first = manager.create(config('restart-race'), 80, 24)
+    const first = manager.create(config('restart-race'), 80, 24, dir)
     expect(first.ok).toBe(true)
 
     manager.dispose('restart-race')
-    const replacement = manager.create(config('restart-race'), 80, 24)
+    const replacement = manager.create(config('restart-race'), 80, 24, dir)
     expect(replacement.ok).toBe(true)
 
     statuses.length = 0
@@ -165,7 +173,7 @@ describe('PtyManager', () => {
     const { manager } = harness()
     const pids: number[] = []
     for (const id of ['orphan-1', 'orphan-2', 'orphan-3']) {
-      const result = manager.create(config(id), 80, 24)
+      const result = manager.create(config(id), 80, 24, dir)
       if (result.ok && result.session.pid) pids.push(result.session.pid)
     }
     expect(pids).toHaveLength(3)
@@ -179,7 +187,7 @@ describe('PtyManager', () => {
 
   it('batches high-volume output without losing the tail', async () => {
     const { manager, output } = harness()
-    manager.create(config('loud'), 120, 40)
+    manager.create(config('loud'), 120, 40, dir)
 
     const command = isWindows
       ? 'for /L %i in (1,1,300) do @echo line-%i\r'
@@ -202,7 +210,7 @@ describe('PtyManager', () => {
     const ids = Array.from({ length: 10 }, (_, index) => `load-${index + 1}`)
     const pids: number[] = []
     for (const id of ids) {
-      const result = manager.create(config(id), 120, 40)
+      const result = manager.create(config(id), 120, 40, dir)
       expect(result.ok).toBe(true)
       if (result.ok && result.session.pid) pids.push(result.session.pid)
     }

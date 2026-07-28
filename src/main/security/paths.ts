@@ -3,7 +3,7 @@
  * write (NFR-13). Pure functions live here so they are unit testable without
  * Electron.
  */
-import { accessSync, constants, statSync } from 'node:fs'
+import { accessSync, constants, realpathSync, statSync } from 'node:fs'
 import { delimiter, isAbsolute, normalize, relative, resolve, sep } from 'node:path'
 
 export type PathCheck =
@@ -26,9 +26,8 @@ export function validateDirectory(input: string, mustBeInside?: string): PathChe
   // Reject anything with a NUL byte before it reaches the OS layer.
   if (input.includes('\0')) return { ok: false, reason: 'denied' }
 
-  const target = resolve(input)
-  if (!isAbsolute(target)) return { ok: false, reason: 'not-absolute' }
-  if (mustBeInside && !isInside(mustBeInside, target)) return { ok: false, reason: 'outside-root' }
+  if (!isAbsolute(input) && !mustBeInside) return { ok: false, reason: 'not-absolute' }
+  const target = isAbsolute(input) ? resolve(input) : resolve(mustBeInside!, input)
 
   let stats
   try {
@@ -42,7 +41,23 @@ export function validateDirectory(input: string, mustBeInside?: string): PathChe
   } catch {
     return { ok: false, reason: 'denied' }
   }
-  return { ok: true, path: target, isDirectory: true }
+
+  let canonicalTarget: string
+  try {
+    canonicalTarget = realpathSync.native(target)
+  } catch {
+    return { ok: false, reason: 'denied' }
+  }
+  if (mustBeInside) {
+    let canonicalRoot: string
+    try {
+      canonicalRoot = realpathSync.native(resolve(mustBeInside))
+    } catch {
+      return { ok: false, reason: 'missing' }
+    }
+    if (!isInside(canonicalRoot, canonicalTarget)) return { ok: false, reason: 'outside-root' }
+  }
+  return { ok: true, path: canonicalTarget, isDirectory: true }
 }
 
 /**

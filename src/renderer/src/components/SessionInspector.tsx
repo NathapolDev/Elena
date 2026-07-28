@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { ArrowCounterClockwiseIcon } from '@phosphor-icons/react/ArrowCounterClockwise'
 import { CaretDoubleRightIcon } from '@phosphor-icons/react/CaretDoubleRight'
 import { PlayIcon } from '@phosphor-icons/react/Play'
@@ -7,7 +7,6 @@ import { XIcon } from '@phosphor-icons/react/X'
 import { acquireTerminal } from '../lib/terminalRegistry'
 import { formatSessionElapsed, relativeWorkspacePath } from '../lib/sessionPresentation'
 import { useStore } from '../state/store'
-import { ConfirmDialog } from './ConfirmDialog'
 import { StatusBadge } from './StatusBadge'
 import type { TerminalConfig, Workspace } from '@shared/types'
 
@@ -21,11 +20,9 @@ export function SessionInspector({ workspace, config, onClose }: Props): React.J
   const session = useStore((state) => state.sessions[config.id])
   const presets = useStore((state) => state.presets)
   const scrollback = useStore((state) => state.settings.scrollback)
-  const confirmCloseRunning = useStore((state) => state.settings.confirmCloseRunning)
   const restartTerminal = useStore((state) => state.restartTerminal)
   const stopTerminal = useStore((state) => state.stopTerminal)
-  const closeTerminal = useStore((state) => state.closeTerminal)
-  const [confirmClose, setConfirmClose] = useState(false)
+  const requestTerminalClose = useStore((state) => state.requestTerminalClose)
 
   const presetName = useMemo(
     () => presets.find((preset) => preset.id === config.presetId)?.name ?? 'Custom session',
@@ -40,11 +37,7 @@ export function SessionInspector({ workspace, config, onClose }: Props): React.J
   }
 
   const requestClose = (): void => {
-    if (isRunning && confirmCloseRunning) {
-      setConfirmClose(true)
-      return
-    }
-    void closeTerminal(config.id)
+    requestTerminalClose(config.id)
   }
 
   return (
@@ -101,20 +94,6 @@ export function SessionInspector({ workspace, config, onClose }: Props): React.J
           <XIcon size={18} /> Close
         </button>
       </div>
-
-      {confirmClose && (
-        <ConfirmDialog
-          title="Close running session?"
-          body={`"${config.title}" is still running. Closing it will terminate the process.`}
-          confirmLabel="Terminate and close"
-          tone="danger"
-          onCancel={() => setConfirmClose(false)}
-          onConfirm={() => {
-            setConfirmClose(false)
-            void closeTerminal(config.id)
-          }}
-        />
-      )}
     </aside>
   )
 }

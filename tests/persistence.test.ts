@@ -7,6 +7,8 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { loadJsonFile, writeJsonFileAtomic } from '../src/main/store/atomicJson'
+import { PresetStore } from '../src/main/store/presetStore'
+import { SettingsStore } from '../src/main/store/settingsStore'
 import { WorkspaceStore } from '../src/main/store/workspaceStore'
 
 let dir: string
@@ -60,6 +62,37 @@ describe('atomic json', () => {
     }))
     expect(outcome.data.value).toBe('fallback')
     expect(outcome.recoveredFrom).toBeUndefined()
+  })
+})
+
+describe('transactional stores', () => {
+  it('does not apply a settings update when its file cannot be written', () => {
+    const blocker = join(dir, 'not-a-directory')
+    writeFileSync(blocker, 'x')
+    const store = new SettingsStore(join(blocker, 'settings.json'))
+    store.load()
+
+    expect(() => store.update({ themePreference: 'light' })).toThrow()
+    expect(store.get().themePreference).toBe('system')
+  })
+
+  it('does not add a preset when its file cannot be written', () => {
+    const blocker = join(dir, 'not-a-directory')
+    writeFileSync(blocker, 'x')
+    const store = new PresetStore(join(blocker, 'presets.json'))
+    store.load()
+    const before = store.list()
+
+    expect(() =>
+      store.create({
+        name: 'Unsaved',
+        executable: 'cmd.exe',
+        args: [],
+        defaultCwd: '',
+        envAllowlist: []
+      })
+    ).toThrow()
+    expect(store.list()).toEqual(before)
   })
 })
 

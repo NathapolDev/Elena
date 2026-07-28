@@ -56,6 +56,7 @@ type State = {
   activeWorkspaceId: string | null
   activeTerminalId: string | null
   zoomedTerminalId: string | null
+  pendingCloseTerminalId: string | null
   sessions: Record<string, RuntimeSession>
   unread: Record<string, boolean>
   presets: AgentPreset[]
@@ -76,6 +77,9 @@ type State = {
   startTerminal: (terminalId: string, cols: number, rows: number) => Promise<void>
   restartTerminal: (terminalId: string, cols: number, rows: number) => Promise<void>
   stopTerminal: (terminalId: string) => Promise<void>
+  requestTerminalClose: (terminalId: string) => void
+  cancelTerminalClose: () => void
+  confirmTerminalClose: () => Promise<void>
   closeTerminal: (terminalId: string) => Promise<void>
   focusTerminal: (terminalId: string) => void
   toggleZoom: (terminalId: string) => void
@@ -114,6 +118,7 @@ export const useStore = create<State>((set, get) => ({
   activeWorkspaceId: null,
   activeTerminalId: null,
   zoomedTerminalId: null,
+  pendingCloseTerminalId: null,
   sessions: {},
   unread: {},
   presets: [],
@@ -323,6 +328,28 @@ export const useStore = create<State>((set, get) => ({
     }
   },
 
+  requestTerminalClose(terminalId) {
+    const state = get()
+    const status = state.sessions[terminalId]?.status
+    const isRunning = status === 'running' || status === 'starting'
+    if (isRunning && state.settings.confirmCloseRunning) {
+      set({ pendingCloseTerminalId: terminalId })
+      return
+    }
+    void state.closeTerminal(terminalId)
+  },
+
+  cancelTerminalClose() {
+    set({ pendingCloseTerminalId: null })
+  },
+
+  async confirmTerminalClose() {
+    const terminalId = get().pendingCloseTerminalId
+    if (!terminalId) return
+    set({ pendingCloseTerminalId: null })
+    await get().closeTerminal(terminalId)
+  },
+
   async closeTerminal(terminalId) {
     const state = get()
     const workspace = state.workspaces.find((w) => w.id === state.activeWorkspaceId)
@@ -355,6 +382,7 @@ export const useStore = create<State>((set, get) => ({
       return {
         sessions,
         unread,
+        pendingCloseTerminalId: s.pendingCloseTerminalId === terminalId ? null : s.pendingCloseTerminalId,
         activeTerminalId: nextActive,
         zoomedTerminalId: s.zoomedTerminalId === terminalId ? null : s.zoomedTerminalId
       }

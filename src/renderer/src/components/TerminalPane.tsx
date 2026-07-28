@@ -36,16 +36,14 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
   const hasUnread = useStore((s) => Boolean(s.unread[config.id]))
   const scrollback = useStore((s) => s.settings.scrollback)
   const warnOnMultilinePaste = useStore((s) => s.settings.warnOnMultilinePaste)
-  const confirmCloseRunning = useStore((s) => s.settings.confirmCloseRunning)
 
   const restartTerminal = useStore((s) => s.restartTerminal)
-  const closeTerminal = useStore((s) => s.closeTerminal)
+  const requestTerminalClose = useStore((s) => s.requestTerminalClose)
   const stopTerminal = useStore((s) => s.stopTerminal)
   const focusTerminal = useStore((s) => s.focusTerminal)
   const toggleZoom = useStore((s) => s.toggleZoom)
 
   const [pendingPaste, setPendingPaste] = useState<string | null>(null)
-  const [confirmClose, setConfirmClose] = useState(false)
   const [renaming, setRenaming] = useState(false)
   const [searchOpen, setSearchOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -148,17 +146,8 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
   }, [config.id, restartTerminal, scrollback])
 
   const handleClose = useCallback(() => {
-    // The store disposes the xterm instance as part of closing (terminalRegistry).
-    void closeTerminal(config.id)
-  }, [closeTerminal, config.id])
-
-  const handleCloseRequest = useCallback(() => {
-    if (isRunning && confirmCloseRunning) {
-      setConfirmClose(true)
-      return
-    }
-    handleClose()
-  }, [confirmCloseRunning, handleClose, isRunning])
+    requestTerminalClose(config.id)
+  }, [config.id, requestTerminalClose])
 
   const runSearch = useCallback(
     (needle: string, direction: 'next' | 'previous') => {
@@ -281,7 +270,7 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
                   type="button"
                   role="menuitem"
                   className="pane__menu-danger"
-                  onClick={() => { setMoreOpen(false); handleCloseRequest() }}
+                  onClick={() => { setMoreOpen(false); handleClose() }}
                   title="Close terminal"
                 >
                   Close
@@ -366,19 +355,6 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
 
       {renaming && <RenameTerminalDialog terminal={config} onClose={() => setRenaming(false)} />}
 
-      {confirmClose && (
-        <ConfirmDialog
-          title="Close running session?"
-          body={`"${config.title}" is still running. Closing it will terminate the process.`}
-          confirmLabel="Terminate and close"
-          tone="danger"
-          onCancel={() => setConfirmClose(false)}
-          onConfirm={() => {
-            setConfirmClose(false)
-            handleClose()
-          }}
-        />
-      )}
     </section>
   )
 }

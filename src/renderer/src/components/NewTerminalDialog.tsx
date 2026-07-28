@@ -79,12 +79,12 @@ export function NewTerminalDialog({ workspace, onClose }: Props): React.JSX.Elem
     try {
       // The cwd defaults to the project root; anything else is validated
       // against it so a session cannot silently start outside the workspace.
-      await call('path:validate', { path: cwd, mustBeInside: workspace.projectRoot })
+      const validatedCwd = await call('path:validate', { path: cwd, mustBeInside: workspace.projectRoot })
       await addTerminal({
         title: selection.title,
         executable: selection.executable,
         args: selection.args,
-        cwd,
+        cwd: validatedCwd.path,
         envAllowlist: selection.envAllowlist,
         ...('presetId' in selection && selection.presetId ? { presetId: selection.presetId } : {}),
         ...(placement === 'grid' ? { spatialGrid: true } : {}),
@@ -120,9 +120,17 @@ export function NewTerminalDialog({ workspace, onClose }: Props): React.JSX.Elem
             value={`${source.kind}:${'id' in source ? source.id : ''}`}
             onChange={(event) => {
               const [kind, id] = event.target.value.split(':')
-              if (kind === 'custom') setSource({ kind: 'custom' })
-              else if (kind === 'shell' && id) setSource({ kind: 'shell', id })
-              else if (kind === 'preset' && id) setSource({ kind: 'preset', id })
+              if (kind === 'custom') {
+                setSource({ kind: 'custom' })
+                setCwd(workspace.projectRoot)
+              } else if (kind === 'shell' && id) {
+                setSource({ kind: 'shell', id })
+                setCwd(workspace.projectRoot)
+              } else if (kind === 'preset' && id) {
+                const preset = presets.find((item) => item.id === id)
+                setSource({ kind: 'preset', id })
+                setCwd(preset?.defaultCwd || workspace.projectRoot)
+              }
             }}
           >
             <optgroup label="Shells">

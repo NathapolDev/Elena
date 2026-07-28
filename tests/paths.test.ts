@@ -1,17 +1,22 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { buildChildEnv, isInside, resolveExecutable, validateDirectory } from '../src/main/security/paths'
 
 const root = mkdtempSync(join(tmpdir(), 'elena-paths-'))
+const outsideRoot = mkdtempSync(join(tmpdir(), 'elena-paths-outside-'))
 const nested = join(root, 'nested')
 const filePath = join(root, 'a-file.txt')
 
 writeFileSync(filePath, 'x')
+mkdirSync(nested)
 mkdtempSync(join(root, 'child-'))
 
-afterAll(() => rmSync(root, { recursive: true, force: true }))
+afterAll(() => {
+  rmSync(root, { recursive: true, force: true })
+  rmSync(outsideRoot, { recursive: true, force: true })
+})
 
 describe('isInside', () => {
   it('accepts the root itself and its descendants', () => {
@@ -49,9 +54,25 @@ describe('validateDirectory', () => {
   })
 
   it('enforces containment when a root is given', () => {
-    expect(validateDirectory(tmpdir(), nested)).toEqual({ ok: false, reason: 'outside-root' })
+    expect(validateDirectory(outsideRoot, root)).toEqual({ ok: false, reason: 'outside-root' })
+  })
+
+  it('resolves a relative directory against the containment root', () => {
+    const result = validateDirectory('nested', root)
+    expect(result).toEqual({ ok: true, path: realPath(nested), isDirectory: true })
+  })
+
+  it('rejects a directory link that escapes the containment root', () => {
+    const link = join(root, 'escape-link')
+    symlinkSync(outsideRoot, link, process.platform === 'win32' ? 'junction' : 'dir')
+    expect(validateDirectory(link, root)).toEqual({ ok: false, reason: 'outside-root' })
   })
 })
+
+function realPath(path: string): string {
+  const result = validateDirectory(path)
+  return result.ok ? result.path : path
+}
 
 describe('resolveExecutable', () => {
   it('finds a real executable on PATH', () => {
