@@ -52,8 +52,8 @@ const RESIZE_SETTLE_MS = 60
  * `PtyManager` always spawns with `useConptyDll`, so the backend is never winpty.
  */
 function windowsPtyOptions(): { backend: 'conpty'; buildNumber: number } | undefined {
-  const build = window.aiWorkspaces?.windowsBuild
-  if (window.aiWorkspaces?.platform !== 'win32' || build == null) return undefined
+  const build = window.elena?.windowsBuild
+  if (window.elena?.platform !== 'win32' || build == null) return undefined
   return { backend: 'conpty', buildNumber: build }
 }
 

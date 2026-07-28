@@ -22,7 +22,7 @@ let userData: string
 test.describe.configure({ mode: 'serial' })
 
 function launchApp(): Promise<ElectronApplication> {
-  const executablePath = process.env.AIWS_E2E_EXECUTABLE
+  const executablePath = process.env.ELENA_E2E_EXECUTABLE
   return electron.launch(
     executablePath
       ? { executablePath, args: [`--user-data-dir=${userData}`] }
@@ -31,8 +31,8 @@ function launchApp(): Promise<ElectronApplication> {
 }
 
 test.beforeAll(async () => {
-  projectRoot = mkdtempSync(join(tmpdir(), 'aiws-e2e-project-'))
-  userData = mkdtempSync(join(tmpdir(), 'aiws-e2e-userdata-'))
+  projectRoot = mkdtempSync(join(tmpdir(), 'elena-e2e-project-'))
+  userData = mkdtempSync(join(tmpdir(), 'elena-e2e-userdata-'))
   writeFileSync(join(projectRoot, 'MARKER.txt'), 'do not delete me')
 
   app = await launchApp()
@@ -222,7 +222,7 @@ test('switches theme without disturbing the running session', async () => {
   await expect(paneBuffer).toContainText('E2E_MARKER_OK')
   await expect(page.locator('.session-item__meta').filter({ hasText: 'Running' })).toHaveCount(4)
 
-  const screenshotPath = process.env.AIWS_E2E_SCREENSHOT
+  const screenshotPath = process.env.ELENA_E2E_SCREENSHOT
   if (screenshotPath) {
     await page.setViewportSize({ width: 1488, height: 1058 })
     await page.screenshot({ path: screenshotPath })

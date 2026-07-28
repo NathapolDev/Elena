@@ -12,7 +12,7 @@ import { WorkspaceStore } from '../src/main/store/workspaceStore'
 let dir: string
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'aiws-store-'))
+  dir = mkdtempSync(join(tmpdir(), 'elena-store-'))
 })
 
 afterEach(() => {

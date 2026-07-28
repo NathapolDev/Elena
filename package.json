@@ -1,20 +1,20 @@
 {
-  "name": "ai-workspaces",
+  "name": "elena",
   "version": "0.1.0",
-  "description": "Desktop workspace for running and supervising multiple CLI/AI agent terminal sessions",
+  "description": "Elena desktop workspace for running and supervising multiple CLI/AI agent terminal sessions",
   "main": "./out/main/index.js",
-  "author": "AI Workspaces",
+  "author": "Elena",
   "license": "MIT",
   "private": true,
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/NathapolDev/AI-WorkSpace.git"
+    "url": "git+https://github.com/NathapolDev/Elena.git"
   },
   "bugs": {
-    "url": "https://github.com/NathapolDev/AI-WorkSpace/issues"
+    "url": "https://github.com/NathapolDev/Elena/issues"
   },
-  "homepage": "https://github.com/NathapolDev/AI-WorkSpace#readme",
+  "homepage": "https://github.com/NathapolDev/Elena#readme",
   "engines": {
     "node": ">=22"
   },

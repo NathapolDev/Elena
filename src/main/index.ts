@@ -74,6 +74,10 @@ async function bootstrap(): Promise<void> {
 }
 
 function createWindow(): void {
+  const windowIcon = isDev
+    ? join(process.cwd(), 'src/renderer/public/elena.png')
+    : join(__dirname, '../renderer/elena.png')
+
   mainWindow = new BrowserWindow({
     width: 1440,
     height: 1024,
@@ -81,7 +85,8 @@ function createWindow(): void {
     minHeight: 720,
     show: false,
     backgroundColor: resolvedTheme() === 'dark' ? '#0B1118' : '#F5F7FA',
-    title: 'AI Workspaces',
+    title: 'Elena',
+    icon: windowIcon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
       sandbox: true,

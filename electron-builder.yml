@@ -1,5 +1,5 @@
-appId: dev.aiworkspaces.app
-productName: AI Workspaces
+appId: dev.elena.app
+productName: Elena
 copyright: Copyright © 2026
 directories:
   output: release
@@ -12,6 +12,7 @@ files:
 asarUnpack:
   - '**/node_modules/node-pty/**'
 win:
+  icon: build/icon.ico
   target:
     - target: nsis
       arch:

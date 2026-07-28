@@ -3,7 +3,7 @@
 ## Comparison target
 
 - Source visual truth: `C:\Users\User\.codex\generated_images\019f9f25-c74d-7242-a23a-6f6a918fcc26\exec-34b68e75-9a86-499f-b324-403b422c0f17.png`
-- Implementation screenshot: `D:\AI-WorkSpace\spatial-grid-qa.png`
+- Implementation screenshot: `spatial-grid-qa.png`
 - Viewport: 1488 × 1058 CSS px
 - Source pixels: 1488 × 1058
 - Implementation pixels: 1488 × 1058
@@ -45,7 +45,7 @@ Fixes made:
 - Added functional Focus, Split, Stop, Restart, Close, and More actions to the bottom bar, including confirmation for closing a running session.
 - Rebuilt Electron before recapturing to ensure the rendered bundle matched source state.
 
-Post-fix evidence: `D:\AI-WorkSpace\spatial-grid-qa.png` shows uncluttered pane headers and the complete persistent action bar at the matched viewport.
+Post-fix evidence: `spatial-grid-qa.png` shows uncluttered pane headers and the complete persistent action bar at the matched viewport.
 
 ### Iteration 2 — passed
 

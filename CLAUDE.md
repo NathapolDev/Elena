@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-AI Workspaces — a local-only Windows 11 x64 Electron desktop app that runs and supervises multiple shell / CLI-agent
+Elena — a local-only Windows 11 x64 Electron desktop app that runs and supervises multiple shell / CLI-agent
 sessions (Claude Code, Codex CLI, plain shells) in persisted tabs and split panes. React 19 renderer, `node-pty` for
 real PTYs, `electron-vite` build, no network features.
 
@@ -32,7 +32,7 @@ npx playwright test -g "opens a shell"
 E2E against the packaged app (part of the release gate in `RELEASE.md`):
 
 ```powershell
-$env:AIWS_E2E_EXECUTABLE = "$PWD\release\win-unpacked\AI Workspaces.exe"
+$env:ELENA_E2E_EXECUTABLE = "$PWD\release\win-unpacked\Elena.exe"
 npm run test:e2e
 ```
 
@@ -62,7 +62,7 @@ remount on split/zoom/StrictMode); output is batched on a 16 ms flush with a 4 M
 `\x03` then force-kills after 2 s; a stale `onExit` from a restarted id is dropped; `disposeAll()` runs on `before-quit`
 and on renderer navigation so no child ever outlives the app.
 
-**Preload (`src/preload/index.ts`)** exposes exactly `invoke`, `subscribe`, `platform` on `window.aiWorkspaces`. No
+**Preload (`src/preload/index.ts`)** exposes exactly `invoke`, `subscribe`, `platform` on `window.elena`. No
 generic `send`/`on`. Sandboxed, so it is built as CJS (`index.cjs`) — see the comment in `electron.vite.config.ts`.
 
 **Persistence (`src/main/store/`)** — `workspaces.json`, `settings.json`, `presets.json` under Electron `userData`.

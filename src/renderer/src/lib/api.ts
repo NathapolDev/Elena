@@ -25,7 +25,7 @@ export async function call<C extends CommandName>(
   channel: C,
   ...[payload]: CommandRequest<C> extends void | undefined ? [] : [CommandRequest<C>]
 ): Promise<CommandResponse<C>> {
-  const result = await window.aiWorkspaces.invoke(channel, payload as CommandRequest<C>)
+  const result = await window.elena.invoke(channel, payload as CommandRequest<C>)
   if (!result.ok) throw new ApiError(result.error)
   return result.data
 }
@@ -34,7 +34,7 @@ export function on<E extends EventName>(
   channel: E,
   listener: (payload: EventPayload<E>) => void
 ): () => void {
-  return window.aiWorkspaces.subscribe(channel, listener)
+  return window.elena.subscribe(channel, listener)
 }
 
 export function describeError(error: unknown): { title: string; body: string; action?: AppError['action'] } {

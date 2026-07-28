@@ -1,4 +1,4 @@
-# AI Workspaces release checklist
+# Elena release checklist
 
 ## Candidate gate
 
@@ -7,7 +7,7 @@
 - [ ] `npm audit --audit-level=critical` reports no critical vulnerabilities.
 - [ ] Ten concurrent noisy PTYs complete without an event-loop stall of 200 ms or more and all child processes terminate.
 - [ ] `npm run build:win` produces the installer and `win-unpacked` app.
-- [ ] The full Electron E2E suite passes with `AIWS_E2E_EXECUTABLE` set to the packaged executable.
+- [ ] The full Electron E2E suite passes with `ELENA_E2E_EXECUTABLE` set to the packaged executable.
 - [ ] Packaged CSP, Node isolation, typed IPC sender checks, navigation blocking, path containment, and log redaction are verified.
 - [ ] Installer is scanned, signed when a certificate is available, and smoke-tested on a clean Windows 11 x64 account.
 - [ ] GitHub CI passes from a committed baseline before publishing.
@@ -19,7 +19,6 @@
 - The installer is unsigned until a code-signing certificate is configured, so Windows may show a reputation warning.
 - Agent CLIs must already be installed and discoverable from the application environment.
 - No cloud sync, SSH, remote terminal, collaboration, telemetry, or automatic agent orchestration.
-- The bundled app currently uses the default Electron application icon.
 
 ## Rollback plan
 

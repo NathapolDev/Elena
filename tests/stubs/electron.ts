@@ -7,7 +7,7 @@ import { join } from 'node:path'
 
 export const app = {
   isPackaged: true,
-  getPath: (name: string): string => join(tmpdir(), 'ai-workspaces-tests', name)
+  getPath: (name: string): string => join(tmpdir(), 'elena-tests', name)
 }
 
 export const nativeTheme = {

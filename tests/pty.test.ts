@@ -12,7 +12,7 @@ import { afterAll, describe, expect, it } from 'vitest'
 import { PtyManager } from '../src/main/pty/PtyManager'
 import type { SessionStatus, TerminalConfig } from '@shared/types'
 
-const dir = mkdtempSync(join(tmpdir(), 'aiws-pty-'))
+const dir = mkdtempSync(join(tmpdir(), 'elena-pty-'))
 afterAll(() => rmSync(dir, { recursive: true, force: true }))
 
 const isWindows = process.platform === 'win32'

@@ -157,13 +157,13 @@ export function App(): React.JSX.Element {
       if (key === '+' || key === '=' || event.code === 'NumpadAdd') {
         event.preventDefault()
         event.stopPropagation()
-        window.aiWorkspaces.zoomIn()
+        window.elena.zoomIn()
         return
       }
       if (key === '-' || event.code === 'NumpadSubtract') {
         event.preventDefault()
         event.stopPropagation()
-        window.aiWorkspaces.zoomOut()
+        window.elena.zoomOut()
         return
       }
 
@@ -248,8 +248,13 @@ export function App(): React.JSX.Element {
         >
           <ListIcon size={20} />
         </button>
+        <div className="commandbar__brand" aria-label="Elena">
+          <img className="commandbar__mascot" src="./elena.png" alt="" />
+          <span className="commandbar__brand-name">Elena</span>
+        </div>
+        {workspace && <span className="commandbar__divider" />}
         <div className="commandbar__workspace">
-          <span className="commandbar__title">{workspace?.name ?? 'AI Workspaces'}</span>
+          {workspace && <span className="commandbar__title">{workspace.name}</span>}
           {workspace && (
             <>
               <span className="commandbar__divider" />
@@ -371,7 +376,7 @@ export function App(): React.JSX.Element {
       {modal === 'delete-workspace' && workspace && (
         <ConfirmDialog
           title="Delete workspace?"
-          body={`"${workspace.name}" will be removed from AI Workspaces along with its session configuration. Files under ${workspace.projectRoot} are not touched.`}
+          body={`"${workspace.name}" will be removed from Elena along with its session configuration. Files under ${workspace.projectRoot} are not touched.`}
           confirmLabel="Delete workspace"
           tone="danger"
           onCancel={() => setModal('none')}

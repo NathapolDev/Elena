@@ -10,8 +10,8 @@ export const SIDEBAR_DEFAULT_WIDTH = 264
 export const SIDEBAR_MIN_WIDTH = 220
 export const SIDEBAR_MAX_WIDTH = 480
 
-const WIDTH_KEY = 'aiws.sidebar.width'
-const HIDDEN_KEY = 'aiws.sidebar.hidden'
+const WIDTH_KEY = 'elena.sidebar.width'
+const HIDDEN_KEY = 'elena.sidebar.hidden'
 
 export function clampSidebarWidth(width: number): number {
   if (!Number.isFinite(width)) return SIDEBAR_DEFAULT_WIDTH

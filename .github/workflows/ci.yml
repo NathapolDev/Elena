@@ -44,6 +44,6 @@ jobs:
       - name: Upload Windows package
         uses: actions/upload-artifact@v5
         with:
-          name: ai-workspaces-windows
+          name: elena-windows
           path: release/*.exe
           if-no-files-found: error

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { readGitBranch } from '../src/main/git/branch'
 
-const root = mkdtempSync(join(tmpdir(), 'aiws-git-'))
+const root = mkdtempSync(join(tmpdir(), 'elena-git-'))
 
 afterAll(() => rmSync(root, { recursive: true, force: true }))
 

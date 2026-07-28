@@ -13,7 +13,7 @@ export type WorkspacesApi = {
 
 declare global {
   interface Window {
-    aiWorkspaces: WorkspacesApi
+    elena: WorkspacesApi
   }
 }
 

@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
 import { buildChildEnv, isInside, resolveExecutable, validateDirectory } from '../src/main/security/paths'
 
-const root = mkdtempSync(join(tmpdir(), 'aiws-paths-'))
+const root = mkdtempSync(join(tmpdir(), 'elena-paths-'))
 const nested = join(root, 'nested')
 const filePath = join(root, 'a-file.txt')
 

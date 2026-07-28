@@ -64,4 +64,4 @@ const api = {
 
 export type WorkspacesApi = typeof api
 
-contextBridge.exposeInMainWorld('aiWorkspaces', api)
+contextBridge.exposeInMainWorld('elena', api)
