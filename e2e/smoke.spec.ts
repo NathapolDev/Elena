@@ -234,7 +234,9 @@ test('fills the remaining spatial grid slots', async () => {
   await expect(page.locator('.pane')).toHaveCount(4)
   await expect(page.locator('.split__divider')).toHaveCount(3)
   await expect(page.getByRole('tab', { name: '1–4' })).toHaveAttribute('aria-selected', 'true')
-  await expect(page.locator('.pane').first().locator('.xterm-rows')).toContainText('E2E_MARKER_OK')
+  // xterm exposes only the rendered viewport through the DOM. Use the newest
+  // marker so a smaller CI viewport does not mistake valid scrollback for loss.
+  await expect(page.locator('.pane').first().locator('.xterm-rows')).toContainText('E2E_INTERRUPT_OK')
 
   // Selecting a session changes focus without hiding the rest of the workspace.
   await page.locator('.session-item').nth(3).click()
@@ -269,7 +271,7 @@ test('renames a terminal without disturbing its session', async () => {
 
 test('switches theme without disturbing the running session', async () => {
   const paneBuffer = page.locator('.pane').first().locator('.xterm-rows')
-  await expect(paneBuffer).toContainText('E2E_MARKER_OK')
+  await expect(paneBuffer).toContainText('E2E_INTERRUPT_OK')
 
   await page.getByRole('button', { name: 'Settings' }).click()
   await page.getByRole('button', { name: 'Light', exact: true }).click()
@@ -308,7 +310,7 @@ test('switches theme without disturbing the running session', async () => {
   await page.getByRole('button', { name: 'Done' }).click()
 
   // The buffer and the session survived both switches (FR-25).
-  await expect(paneBuffer).toContainText('E2E_MARKER_OK')
+  await expect(paneBuffer).toContainText('E2E_INTERRUPT_OK')
   await expect(page.locator('.session-item__meta').filter({ hasText: 'Running' })).toHaveCount(4)
 
   const screenshotPath = process.env.ELENA_E2E_SCREENSHOT
@@ -325,7 +327,7 @@ test('selects all and clears terminal output', async () => {
   await expect(pane.locator('.xterm-selection div')).not.toHaveCount(0)
   await pane.getByRole('button', { name: 'More session actions' }).click()
   await pane.getByRole('menuitem', { name: 'Clear' }).click()
-  await expect(pane.locator('.xterm-rows')).not.toContainText('E2E_MARKER_OK')
+  await expect(pane.locator('.xterm-rows')).not.toContainText('E2E_INTERRUPT_OK')
 })
 
 test('creates, edits, launches, duplicates, and deletes a custom preset', async () => {
