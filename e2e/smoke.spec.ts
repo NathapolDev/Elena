@@ -196,18 +196,22 @@ test('copies a terminal selection and pastes clipboard text with Ctrl+C and Ctrl
   await expect(pane.locator('.xterm-rows')).toContainText('E2E_PASTE_RESULT', { timeout: 30_000 })
 
   await expect(pane.locator('.xterm-selection div')).toHaveCount(0)
-  const prompt = `PS ${projectRoot}>`
-  const promptCount = (await pane.locator('.xterm-rows').innerText()).split(prompt).length
+  const terminalRows = pane.locator('.xterm-rows')
+  const countPowerShellPrompts = async (): Promise<number> =>
+    ((await terminalRows.innerText()).match(/PS [^>]*>/g) ?? []).length
+  const promptCount = await countPowerShellPrompts()
   await page.keyboard.type('Write-Output E2E_INTERRUPT_STARTED; Start-Sleep -Seconds 30')
   await page.keyboard.press('Enter')
-  await expect(pane.locator('.xterm-rows')).toContainText('E2E_INTERRUPT_STARTED', { timeout: 30_000 })
+  await expect(terminalRows).toContainText('E2E_INTERRUPT_STARTED', { timeout: 30_000 })
   await page.keyboard.press('Control+KeyC')
-  await expect
-    .poll(async () => (await pane.locator('.xterm-rows').innerText()).split(prompt).length)
-    .toBeGreaterThan(promptCount)
-  await page.keyboard.type("Write-Output ('E2E_' + 'INTERRUPT_OK')")
-  await page.keyboard.press('Enter')
-  await expect(pane.locator('.xterm-rows')).toContainText('E2E_INTERRUPT_OK', { timeout: 30_000 })
+  await expect.poll(countPowerShellPrompts).toBeGreaterThan(promptCount)
+
+  const terminalInput = pane.locator('.xterm-helper-textarea')
+  await terminalInput.focus()
+  await expect(terminalInput).toBeFocused()
+  await terminalInput.pressSequentially("Write-Output ('E2E_' + 'INTERRUPT_OK')", { delay: 10 })
+  await terminalInput.press('Enter')
+  await expect(terminalRows).toContainText('E2E_INTERRUPT_OK', { timeout: 30_000 })
 })
 
 test('splits into a second pane with independent sessions', async () => {
