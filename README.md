@@ -9,7 +9,6 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/NathapolDev/Elena/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/NathapolDev/Elena/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Windows 11 x64" src="https://img.shields.io/badge/platform-Windows%2011%20x64-0078D4?logo=windows11&logoColor=white">
   <img alt="Node.js 22+" src="https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white">
   <img alt="Electron 43" src="https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white">
