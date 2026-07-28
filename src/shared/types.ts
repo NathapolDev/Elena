@@ -68,6 +68,15 @@ export type AgentPreset = {
   installHint?: string
 }
 
+/** Read from `.git` on demand; never persisted (FR-14 — configuration only). */
+export type GitBranchInfo = {
+  /** Absolute path of the working-tree root. */
+  root: string
+  /** Branch name, or the short commit id when HEAD is detached. */
+  branch: string
+  detached: boolean
+}
+
 export type ShellInfo = {
   id: string
   name: string

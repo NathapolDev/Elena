@@ -22,11 +22,40 @@ export type TerminalEntry = {
   fit: FitAddon
   search: SearchAddon
   element: HTMLDivElement
+  /** Re-measure now (mount, zoom, tab switch). */
+  fitNow: () => void
+  /** Re-measure once the size stops changing — use this for ResizeObserver. */
+  scheduleFit: () => void
   /** False until the first PTY create has been requested for this id. */
   dispose: () => void
 }
 
 const registry = new Map<string, TerminalEntry>()
+
+/**
+ * A divider drag fires the pane's ResizeObserver on every pointer move. Each
+ * fit that changes cols/rows resizes the ConPTY, and the shell redraws its
+ * prompt for every one of those — dozens of redraws racing each other leave the
+ * prompt anchored to a row that no longer exists, so the next thing typed lands
+ * mid-buffer instead of on the last line. One resize per settled size instead.
+ */
+const RESIZE_SETTLE_MS = 60
+
+/**
+ * ConPTY does not resize like a POSIX pty, and xterm only compensates when it
+ * is told which backend it is attached to: growing the row count makes ConPTY
+ * emit blank rows rather than handing scrollback back to the viewport, and
+ * pre-21376 builds do not report wrapped lines at all. Left undeclared, xterm
+ * reflows against assumptions ConPTY does not honour and rows get replaced —
+ * the same "typing after a resize goes to the wrong line" symptom.
+ *
+ * `PtyManager` always spawns with `useConptyDll`, so the backend is never winpty.
+ */
+function windowsPtyOptions(): { backend: 'conpty'; buildNumber: number } | undefined {
+  const build = window.aiWorkspaces?.windowsBuild
+  if (window.aiWorkspaces?.platform !== 'win32' || build == null) return undefined
+  return { backend: 'conpty', buildNumber: build }
+}
 
 /**
  * xterm cannot read CSS variables, so the whole ITheme — including all sixteen
@@ -77,6 +106,7 @@ export function acquireTerminal(
   element.style.width = '100%'
   element.style.height = '100%'
 
+  const windowsPty = windowsPtyOptions()
   const term = new Terminal({
     fontFamily: "'JetBrains Mono', 'Cascadia Mono', Consolas, ui-monospace, monospace",
     fontSize: 13,
@@ -84,7 +114,8 @@ export function acquireTerminal(
     cursorBlink: true,
     scrollback: options.scrollback,
     allowProposedApi: true,
-    theme: readTerminalTheme()
+    theme: readTerminalTheme(),
+    ...(windowsPty ? { windowsPty } : {})
   })
   const fit = new FitAddon()
   const search = new SearchAddon()
@@ -107,12 +138,48 @@ export function acquireTerminal(
     options.onOutput()
   })
 
+  let settleTimer: ReturnType<typeof setTimeout> | null = null
+
+  const fitNow = (): void => {
+    if (settleTimer) {
+      clearTimeout(settleTimer)
+      settleTimer = null
+    }
+    // A pane measures zero while the layout is mid-update, while its tab is
+    // being swapped, and whenever the window is minimised. Fitting then would
+    // resize the PTY to xterm's 2x1 minimum and make the shell rewrap its
+    // prompt to a size the user never chose — which survives the restore.
+    const host = element.parentElement
+    if (!host || host.clientWidth < 1 || host.clientHeight < 1) return
+
+    const buffer = term.buffer.active
+    const wasAtBottom = buffer.viewportY >= buffer.baseY
+    try {
+      fit.fit()
+    } catch {
+      return
+    }
+    // Reflow moves the viewport; a user parked at the prompt must stay there.
+    if (wasAtBottom) term.scrollToBottom()
+  }
+
+  const scheduleFit = (): void => {
+    if (settleTimer) clearTimeout(settleTimer)
+    settleTimer = setTimeout(() => {
+      settleTimer = null
+      fitNow()
+    }, RESIZE_SETTLE_MS)
+  }
+
   const entry: TerminalEntry = {
     term,
     fit,
     search,
     element,
+    fitNow,
+    scheduleFit,
     dispose: () => {
+      if (settleTimer) clearTimeout(settleTimer)
       unsubscribe()
       inputDisposable.dispose()
       resizeDisposable.dispose()

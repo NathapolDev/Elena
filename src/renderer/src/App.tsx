@@ -1,21 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowCounterClockwiseIcon } from '@phosphor-icons/react/ArrowCounterClockwise'
-import { CircleIcon } from '@phosphor-icons/react/Circle'
-import { CrosshairIcon } from '@phosphor-icons/react/Crosshair'
-import { CommandIcon } from '@phosphor-icons/react/Command'
-import { DotsThreeVerticalIcon } from '@phosphor-icons/react/DotsThreeVertical'
 import { FolderIcon } from '@phosphor-icons/react/Folder'
 import { GearSixIcon } from '@phosphor-icons/react/GearSix'
 import { ListIcon } from '@phosphor-icons/react/List'
 import { PlusIcon } from '@phosphor-icons/react/Plus'
-import { SidebarSimpleIcon } from '@phosphor-icons/react/SidebarSimple'
 import { SquaresFourIcon } from '@phosphor-icons/react/SquaresFour'
-import { StopIcon } from '@phosphor-icons/react/Stop'
-import { XIcon } from '@phosphor-icons/react/X'
 import { collectTerminalIds } from '@shared/layout'
 import { on } from './lib/api'
 import { dispatchTerminalData } from './lib/terminalBus'
-import { applyScrollbackToAll, applyThemeToAll, getTerminal } from './lib/terminalRegistry'
+import { applyScrollbackToAll, applyThemeToAll } from './lib/terminalRegistry'
 import { selectActiveWorkspace, useStore } from './state/store'
 import { loadSidebarHidden, loadSidebarWidth, saveSidebarHidden, saveSidebarWidth } from './lib/uiPrefs'
 import { Sidebar } from './components/Sidebar'
@@ -30,7 +22,6 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { CommandPalette } from './components/CommandPalette'
 import type { Command } from './components/CommandPalette'
 import { Toasts } from './components/Toasts'
-import { SessionInspector } from './components/SessionInspector'
 
 type Modal =
   | 'none'
@@ -48,10 +39,8 @@ export function App(): React.JSX.Element {
   const workspace = useStore(selectActiveWorkspace)
   const activeTerminalId = useStore((s) => s.activeTerminalId)
   const zoomedTerminalId = useStore((s) => s.zoomedTerminalId)
-  const sessions = useStore((s) => s.sessions)
   const resolvedTheme = useStore((s) => s.resolvedTheme)
   const scrollback = useStore((s) => s.settings.scrollback)
-  const confirmCloseRunning = useStore((s) => s.settings.confirmCloseRunning)
 
   const applyStatus = useStore((s) => s.applyStatus)
   const applyExit = useStore((s) => s.applyExit)
@@ -63,15 +52,12 @@ export function App(): React.JSX.Element {
   const toggleZoom = useStore((s) => s.toggleZoom)
   const closeTerminal = useStore((s) => s.closeTerminal)
   const stopTerminal = useStore((s) => s.stopTerminal)
-  const restartTerminal = useStore((s) => s.restartTerminal)
   const deleteWorkspace = useStore((s) => s.deleteWorkspace)
   const arrangeSpatialGrid = useStore((s) => s.arrangeSpatialGrid)
 
   const [modal, setModal] = useState<Modal>('none')
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
   const [sidebarHidden, setSidebarHidden] = useState(loadSidebarHidden)
-  const [inspectorOpen, setInspectorOpen] = useState(true)
-  const [footerCloseConfirm, setFooterCloseConfirm] = useState(false)
 
   useEffect(() => {
     void bootstrap()
@@ -121,11 +107,6 @@ export function App(): React.JSX.Element {
         label: 'Arrange sessions in 2×2 grid',
         run: () => void arrangeSpatialGrid()
       },
-      {
-        id: 'toggle-inspector',
-        label: 'Toggle session inspector',
-        run: () => setInspectorOpen((open) => !open)
-      },
       { id: 'theme-light', label: 'Theme: Light', run: () => void useStore.getState().updateSettings({ themePreference: 'light' }) },
       { id: 'theme-dark', label: 'Theme: Dark', run: () => void useStore.getState().updateSettings({ themePreference: 'dark' }) },
       { id: 'theme-system', label: 'Theme: System', run: () => void useStore.getState().updateSettings({ themePreference: 'system' }) },
@@ -172,6 +153,19 @@ export function App(): React.JSX.Element {
       const ctrl = event.ctrlKey || event.metaKey
       if (!ctrl) return
       const key = event.key.toLowerCase()
+
+      if (key === '+' || key === '=' || event.code === 'NumpadAdd') {
+        event.preventDefault()
+        event.stopPropagation()
+        window.aiWorkspaces.zoomIn()
+        return
+      }
+      if (key === '-' || event.code === 'NumpadSubtract') {
+        event.preventDefault()
+        event.stopPropagation()
+        window.aiWorkspaces.zoomOut()
+        return
+      }
 
       if (key === 'k') {
         event.preventDefault()
@@ -227,40 +221,15 @@ export function App(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKeyDown, true)
   }, [onKeyDown])
 
-  const runningCount = terminalIds.filter((terminalId) => sessions[terminalId]?.status === 'running').length
   const zoomedConfig = zoomedTerminalId
     ? workspace?.terminals.find((t) => t.id === zoomedTerminalId)
     : undefined
   const activeConfig = activeTerminalId
     ? workspace?.terminals.find((t) => t.id === activeTerminalId)
     : undefined
-  const activeSession = activeTerminalId ? sessions[activeTerminalId] : undefined
-
-  const focusActiveSession = (): void => {
-    if (!activeTerminalId) return
-    getTerminal(activeTerminalId)?.term.focus()
-  }
-
-  const restartActiveSession = (): void => {
-    if (!activeTerminalId) return
-    const terminal = getTerminal(activeTerminalId)
-    if (!terminal) return
-    terminal.term.clear()
-    void restartTerminal(activeTerminalId, terminal.term.cols, terminal.term.rows)
-  }
-
-  const requestFooterClose = (): void => {
-    if (!activeTerminalId) return
-    if ((activeSession?.status === 'running' || activeSession?.status === 'starting') && confirmCloseRunning) {
-      setFooterCloseConfirm(true)
-      return
-    }
-    void closeTerminal(activeTerminalId)
-  }
   const bodyClassName = [
     'app__body',
-    sidebarHidden ? 'app__body--sidebar-hidden' : '',
-    inspectorOpen && workspace && activeConfig ? 'app__body--inspector' : ''
+    sidebarHidden ? 'app__body--sidebar-hidden' : ''
   ]
     .filter(Boolean)
     .join(' ')
@@ -312,24 +281,6 @@ export function App(): React.JSX.Element {
         >
           <SquaresFourIcon size={18} /> Layout: 2×2
         </button>
-        <button
-          type="button"
-          className="button button--ghost"
-          onClick={() => setModal('palette')}
-          aria-label="Command Palette"
-        >
-          <CommandIcon size={18} /> <span className="palette__hint">Ctrl+K</span>
-        </button>
-        {workspace && activeConfig && !inspectorOpen && (
-          <button
-            type="button"
-            className="icon-button"
-            onClick={() => setInspectorOpen(true)}
-            aria-label="Show session inspector"
-          >
-            <SidebarSimpleIcon size={19} />
-          </button>
-        )}
         <button
           type="button"
           className="icon-button"
@@ -403,42 +354,7 @@ export function App(): React.JSX.Element {
             </div>
           )}
         </main>
-
-        {inspectorOpen && workspace && activeConfig && (
-          <SessionInspector workspace={workspace} config={activeConfig} onClose={() => setInspectorOpen(false)} />
-        )}
       </div>
-
-      <footer className="statusbar">
-        <span className="statusbar__health">
-          <CircleIcon size={9} weight="fill" aria-hidden="true" />
-          {runningCount > 0 ? `${runningCount} sessions operational` : 'Ready'}
-        </span>
-        <span className="statusbar__actions">
-          <button type="button" onClick={focusActiveSession} disabled={!activeTerminalId}>
-            <CrosshairIcon size={16} /> Focus session <kbd>Ctrl+1–4</kbd>
-          </button>
-          <button type="button" onClick={() => setModal('new-terminal')} disabled={!workspace}>
-            <SquaresFourIcon size={16} /> Split <kbd>Ctrl+\</kbd>
-          </button>
-          <button
-            type="button"
-            onClick={() => activeTerminalId && void stopTerminal(activeTerminalId)}
-            disabled={!activeTerminalId || activeSession?.status !== 'running'}
-          >
-            <StopIcon size={16} /> Stop session
-          </button>
-          <button type="button" onClick={restartActiveSession} disabled={!activeTerminalId}>
-            <ArrowCounterClockwiseIcon size={16} /> Restart session
-          </button>
-          <button type="button" onClick={requestFooterClose} disabled={!activeTerminalId}>
-            <XIcon size={16} /> Close session
-          </button>
-          <button type="button" onClick={() => setModal('palette')} aria-label="More actions">
-            <DotsThreeVerticalIcon size={18} /> More actions <kbd>F1</kbd>
-          </button>
-        </span>
-      </footer>
 
       {modal === 'new-workspace' && <NewWorkspaceDialog onClose={() => setModal('none')} />}
       {modal === 'rename-workspace' && workspace && (
@@ -465,20 +381,6 @@ export function App(): React.JSX.Element {
           }}
         />
       )}
-      {footerCloseConfirm && activeConfig && (
-        <ConfirmDialog
-          title="Close running session?"
-          body={`“${activeConfig.title}” is still running. Its process will be terminated.`}
-          confirmLabel="Terminate and close"
-          tone="danger"
-          onCancel={() => setFooterCloseConfirm(false)}
-          onConfirm={() => {
-            setFooterCloseConfirm(false)
-            void closeTerminal(activeConfig.id)
-          }}
-        />
-      )}
-
       <Toasts />
     </div>
   )

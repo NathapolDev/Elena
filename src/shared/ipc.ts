@@ -9,6 +9,7 @@ import type {
   AgentPreset,
   AppError,
   AppSettings,
+  GitBranchInfo,
   LayoutNode,
   ResolvedTheme,
   RuntimeSession,
@@ -57,6 +58,9 @@ export type Commands = {
   }
   'preset:delete': { req: { id: string }; res: { id: string } }
   'preset:reset': { req: void; res: AgentPreset[] }
+
+  /** Null when the folder is not inside a git working tree. */
+  'git:branch': { req: { path: string }; res: GitBranchInfo | null }
 
   'shell:list': { req: void; res: ShellInfo[] }
   'settings:get': { req: void; res: { settings: AppSettings; resolvedTheme: ResolvedTheme } }
@@ -109,6 +113,7 @@ export const COMMAND_CHANNELS: readonly CommandName[] = [
   'preset:update',
   'preset:delete',
   'preset:reset',
+  'git:branch',
   'shell:list',
   'settings:get',
   'settings:update',

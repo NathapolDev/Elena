@@ -7,6 +7,7 @@ import type { BrowserWindow } from 'electron'
 import { requestSchemas } from '@shared/schemas'
 import type { RuntimeSession } from '@shared/types'
 import { broadcast, fail, ok, registerCommand } from './bus'
+import { readGitBranch } from '../git/branch'
 import { discoverShells } from '../pty/shells'
 import { validateDirectory } from '../security/paths'
 import { applyThemePreference, resolvedTheme } from '../theme'
@@ -146,6 +147,12 @@ export function registerIpcHandlers(deps: Deps): void {
       : fail('VALIDATION_FAILED', 'Built-in presets cannot be deleted. Reset them instead.')
   )
   registerCommand('preset:reset', requestSchemas['preset:reset'], () => ok(presets.resetBuiltIns()))
+
+  /* ---------- git ---------- */
+
+  // Read-only and best effort: a folder outside a repo is a `null`, not an
+  // error, so the pane header simply shows no branch.
+  registerCommand('git:branch', requestSchemas['git:branch'], ({ path }) => ok(readGitBranch(path)))
 
   /* ---------- shells, settings, dialogs ---------- */
 

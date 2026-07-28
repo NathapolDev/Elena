@@ -10,10 +10,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { ArrowCounterClockwiseIcon } from '@phosphor-icons/react/ArrowCounterClockwise'
 import { ArrowsOutIcon } from '@phosphor-icons/react/ArrowsOut'
 import { DotsThreeVerticalIcon } from '@phosphor-icons/react/DotsThreeVertical'
+import { GitBranchIcon } from '@phosphor-icons/react/GitBranch'
 import { MagnifyingGlassIcon } from '@phosphor-icons/react/MagnifyingGlass'
 import { PlayIcon } from '@phosphor-icons/react/Play'
 import { StopIcon } from '@phosphor-icons/react/Stop'
-import { call } from '../lib/api'
+import { useGitBranch } from '../lib/gitBranch'
 import { formatSessionElapsed, relativeWorkspacePath } from '../lib/sessionPresentation'
 import { acquireTerminal } from '../lib/terminalRegistry'
 import { selectActiveWorkspace, useStore } from '../state/store'
@@ -53,6 +54,10 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
   const status = session?.status
   const isRunning = status === 'running' || status === 'starting'
 
+  // Polled from the pane's own cwd, so panes on different folders of the same
+  // repo — or on different repos — each show their own branch.
+  const git = useGitBranch(config.cwd)
+
   /* ---------- adopt the terminal's DOM node ---------- */
   useEffect(() => {
     const host = hostRef.current
@@ -64,16 +69,11 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
     })
     host.appendChild(entry.element)
 
-    const refit = (): void => {
-      try {
-        entry.fit.fit()
-      } catch {
-        /* the pane can measure zero mid-layout */
-      }
-    }
-    refit()
+    entry.fitNow()
 
-    const observer = new ResizeObserver(refit)
+    // Debounced in the registry: a divider drag fires this on every pointer
+    // move, and one ConPTY resize per move corrupts the prompt row.
+    const observer = new ResizeObserver(entry.scheduleFit)
     observer.observe(host)
 
     return () => {
@@ -97,6 +97,13 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
+    const pasteText = (text: string): void => {
+      if (warnOnMultilinePaste && text.includes('\n')) {
+        setPendingPaste(text)
+        return
+      }
+      acquireTerminal(config.id, { scrollback, onOutput: () => {} }).term.paste(text)
+    }
     const onPaste = (event: ClipboardEvent): void => {
       const text = event.clipboardData?.getData('text') ?? ''
       if (!warnOnMultilinePaste || !text.includes('\n')) return
@@ -104,9 +111,35 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
       event.stopPropagation()
       setPendingPaste(text)
     }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      const ctrl = event.ctrlKey || event.metaKey
+      if (!ctrl || event.altKey) return
+
+      const key = event.key.toLowerCase()
+      const terminal = acquireTerminal(config.id, { scrollback, onOutput: () => {} }).term
+
+      // Preserve Ctrl+C as the shell interrupt unless the user has selected
+      // terminal output, in which case it follows the normal copy convention.
+      if (key === 'c' && !event.shiftKey && terminal.hasSelection()) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        void navigator.clipboard.writeText(terminal.getSelection()).catch(() => {})
+        return
+      }
+
+      if (key === 'v' && !event.shiftKey) {
+        event.preventDefault()
+        event.stopImmediatePropagation()
+        void navigator.clipboard.readText().then(pasteText).catch(() => {})
+      }
+    }
     host.addEventListener('paste', onPaste, true)
-    return () => host.removeEventListener('paste', onPaste, true)
-  }, [warnOnMultilinePaste])
+    host.addEventListener('keydown', onKeyDown, true)
+    return () => {
+      host.removeEventListener('paste', onPaste, true)
+      host.removeEventListener('keydown', onKeyDown, true)
+    }
+  }, [config.id, scrollback, warnOnMultilinePaste])
 
   const handleRestart = useCallback(() => {
     const entry = acquireTerminal(config.id, { scrollback, onOutput: () => {} })
@@ -168,6 +201,19 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
           <span className="pane__cwd" title={config.cwd}>
             cwd: {workspace ? relativeWorkspacePath(workspace.projectRoot, config.cwd) : config.cwd}
           </span>
+          {git && (
+            <span
+              className={`pane__branch ${git.detached ? 'pane__branch--detached' : ''}`}
+              title={
+                git.detached
+                  ? `Detached HEAD at ${git.branch} — ${git.root}`
+                  : `On branch ${git.branch} — ${git.root}`
+              }
+            >
+              <GitBranchIcon size={13} weight="bold" aria-hidden />
+              <span className="pane__branch-name">{git.branch}</span>
+            </span>
+          )}
           <span>{formatSessionElapsed(session)}</span>
           {hasUnread && <span className="pane__new-output">New output</span>}
         </div>
@@ -313,7 +359,7 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
           onConfirm={() => {
             const text = pendingPaste
             setPendingPaste(null)
-            void call('terminal:write', { terminalId: config.id, data: text }).catch(() => {})
+            acquireTerminal(config.id, { scrollback, onOutput: () => {} }).term.paste(text)
           }}
         />
       )}

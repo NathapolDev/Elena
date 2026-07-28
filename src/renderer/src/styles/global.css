@@ -50,7 +50,7 @@ select {
 
 .app {
   display: grid;
-  grid-template-rows: var(--commandbar-height) 1fr var(--statusbar-height);
+  grid-template-rows: var(--commandbar-height) minmax(0, 1fr);
   height: 100%;
   background: var(--bg);
 }
@@ -666,6 +666,32 @@ body.is-resizing * {
 }
 
 /*
+ * The branch sits next to the cwd because the two answer the same question:
+ * where this pane's next command will run. It shrinks before the cwd does, and
+ * a long branch name truncates rather than pushing the action row off.
+ */
+.pane__branch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pane__branch-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Detached HEAD is a state you can lose commits in — worth reading as unusual. */
+.pane__branch--detached {
+  color: var(--status-waiting);
+  font-style: italic;
+}
+
+/*
  * A four-pane layout leaves each header ~300px. The title is the pane's
  * identity — and now the thing you rename — so it is the last item allowed to
  * shrink and never disappears entirely; the cwd collapses first and the action
@@ -989,8 +1015,10 @@ body.is-resizing * {
     --inspector-width: 190px;
   }
 
+  /* The branch stays: at this width it is the one piece of metadata that
+     changes under the user and is not recoverable from the pane's own output. */
   .commandbar__sessions,
-  .pane__metadata > span:nth-child(n + 2) {
+  .pane__metadata > span:nth-child(n + 2):not(.pane__branch) {
     display: none;
   }
 }
@@ -1221,7 +1249,7 @@ body.is-resizing * {
 .toasts {
   position: fixed;
   right: var(--space-4);
-  bottom: calc(var(--statusbar-height) + var(--space-4));
+  bottom: var(--space-4);
   display: flex;
   flex-direction: column;
   gap: var(--space-2);

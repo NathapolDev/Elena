@@ -147,6 +147,8 @@ export const requestSchemas = {
   'preset:delete': z.object({ id: z.string().min(1) }),
   'preset:reset': z.void().or(z.undefined()),
 
+  'git:branch': z.object({ path: z.string().min(1).max(1024) }),
+
   'shell:list': z.void().or(z.undefined()),
   'settings:get': z.void().or(z.undefined()),
   'settings:update': appSettingsSchema.partial(),

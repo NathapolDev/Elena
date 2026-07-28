@@ -100,6 +100,59 @@ test('opens a shell and runs a command in a real PTY', async () => {
   await expect(pane.locator('.xterm-rows')).toContainText('E2E_MARKER_OK', { timeout: 30_000 })
 })
 
+test('keeps the requested compact chrome hidden', async () => {
+  await expect(page.getByRole('button', { name: 'Command Palette' })).toHaveCount(0)
+  await expect(page.locator('.inspector')).toHaveCount(0)
+  await expect(page.locator('.statusbar__actions')).toHaveCount(0)
+  await expect(page.locator('.statusbar')).toHaveCount(0)
+
+  const appBottom = await page.locator('.app').evaluate((element) => element.getBoundingClientRect().bottom)
+  const mainBottom = await page.locator('.app__main').evaluate((element) => element.getBoundingClientRect().bottom)
+  expect(mainBottom).toBeCloseTo(appBottom, 0)
+})
+
+test('zooms the window with Ctrl++ and Ctrl+-', async () => {
+  const initialWidth = await page.evaluate(() => window.innerWidth)
+
+  await page.keyboard.press('Control+Equal')
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBeLessThan(initialWidth)
+  await expect(page.locator('.pane').first()).toBeVisible()
+
+  await page.keyboard.press('Control+Minus')
+  await expect.poll(() => page.evaluate(() => window.innerWidth)).toBe(initialWidth)
+})
+
+test('copies a terminal selection and pastes clipboard text with Ctrl+C and Ctrl+V', async () => {
+  const pane = page.locator('.pane').first()
+
+  await pane.getByRole('button', { name: 'More session actions' }).click()
+  await pane.getByRole('menuitem', { name: 'Select all' }).click()
+  await pane.locator('.xterm-helper-textarea').focus()
+  await page.keyboard.press('Control+KeyC')
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('E2E_MARKER_OK')
+
+  await page.evaluate(() => navigator.clipboard.writeText("Write-Output ('E2E_' + 'PASTE_RESULT')"))
+  await pane.locator('.xterm-screen').click()
+  await page.keyboard.press('Control+KeyV')
+  await expect(pane.locator('.xterm-rows')).toContainText('PASTE_RESULT', { timeout: 30_000 })
+  await page.keyboard.press('Enter')
+  await expect(pane.locator('.xterm-rows')).toContainText('E2E_PASTE_RESULT', { timeout: 30_000 })
+
+  await expect(pane.locator('.xterm-selection div')).toHaveCount(0)
+  const prompt = `PS ${projectRoot}>`
+  const promptCount = (await pane.locator('.xterm-rows').innerText()).split(prompt).length
+  await page.keyboard.type('Write-Output E2E_INTERRUPT_STARTED; Start-Sleep -Seconds 30')
+  await page.keyboard.press('Enter')
+  await expect(pane.locator('.xterm-rows')).toContainText('E2E_INTERRUPT_STARTED', { timeout: 30_000 })
+  await page.keyboard.press('Control+KeyC')
+  await expect
+    .poll(async () => (await pane.locator('.xterm-rows').innerText()).split(prompt).length)
+    .toBeGreaterThan(promptCount)
+  await page.keyboard.type("Write-Output ('E2E_' + 'INTERRUPT_OK')")
+  await page.keyboard.press('Enter')
+  await expect(pane.locator('.xterm-rows')).toContainText('E2E_INTERRUPT_OK', { timeout: 30_000 })
+})
+
 test('splits into a second pane with independent sessions', async () => {
   await page.getByRole('button', { name: 'New Terminal' }).first().click()
   await page.getByRole('button', { name: 'Split right' }).click()
@@ -167,7 +220,7 @@ test('switches theme without disturbing the running session', async () => {
 
   // The buffer and the session survived both switches (FR-25).
   await expect(paneBuffer).toContainText('E2E_MARKER_OK')
-  await expect(page.locator('.statusbar__health')).toContainText('4 sessions operational')
+  await expect(page.locator('.session-item__meta').filter({ hasText: 'Running' })).toHaveCount(4)
 
   const screenshotPath = process.env.AIWS_E2E_SCREENSHOT
   if (screenshotPath) {
@@ -214,19 +267,25 @@ test('creates, edits, duplicates, and deletes a custom preset', async () => {
 test('restarting a session produces a new pid', async () => {
   await page.locator('.session-item').first().click()
   const pane = page.locator('.pane').first()
-  const pidValue = page.locator('.inspector__details > div').filter({ has: page.getByText('PID', { exact: true }) }).locator('dd')
-  const before = await pidValue.innerText()
+
+  await pane.locator('.xterm-screen').click()
+  await page.keyboard.type('echo E2E_PID_$PID')
+  await page.keyboard.press('Enter')
+  await expect(pane.locator('.xterm-rows')).toContainText(/E2E_PID_\d+/, { timeout: 30_000 })
+  const beforeText = await pane.locator('.xterm-rows').innerText()
+  const before = [...beforeText.matchAll(/E2E_PID_(\d+)/g)].at(-1)?.[1]
+  expect(before).toBeTruthy()
 
   await pane.getByRole('button', { name: 'Restart' }).click()
-  await expect
-    .poll(
-      async () => {
-        const current = await pidValue.innerText()
-        return current !== '—' && current !== before
-      },
-      { timeout: 30_000 }
-    )
-    .toBe(true)
+  await expect(pane.locator('.badge').first()).toContainText('Running', { timeout: 30_000 })
+  await pane.locator('.xterm-screen').click()
+  await page.keyboard.type('echo E2E_PID_$PID')
+  await page.keyboard.press('Enter')
+  await expect(pane.locator('.xterm-rows')).toContainText(/E2E_PID_\d+/, { timeout: 30_000 })
+  const afterText = await pane.locator('.xterm-rows').innerText()
+  const after = [...afterText.matchAll(/E2E_PID_(\d+)/g)].at(-1)?.[1]
+  expect(after).toBeTruthy()
+  expect(after).not.toBe(before)
 })
 
 test('closing a running session asks for confirmation', async () => {
