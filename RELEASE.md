@@ -12,6 +12,28 @@
 - [ ] Installer is scanned, signed when a certificate is available, and smoke-tested on a clean Windows 11 x64 account.
 - [ ] GitHub CI passes from a committed baseline before publishing.
 
+## Publishing
+
+Merging to `main` builds and tests the app but does **not** publish anything — the
+`release` job in `.github/workflows/ci.yml` is gated on `refs/tags/v*`, so a push to
+`main` leaves the installer as an expiring workflow artifact only. Pushing an
+annotated `vX.Y.Z` tag is what creates the GitHub Release.
+
+1. Confirm the candidate gate above passed on the commit you are about to tag.
+2. Tag that commit and push the tag:
+
+   ```powershell
+   git checkout main
+   git pull origin main
+   git tag -a v0.1.0 -m "Elena v0.1.0"
+   git push origin v0.1.0
+   ```
+
+The tag must be `v` plus the exact `version` in `package.json`; CI fails at the
+"Verify release tag matches package version" step otherwise. The `release` job runs
+only after `windows` passes all five stages (lint → test → build → e2e → build:win),
+then attaches `Elena-<version>-x64.exe` to a GitHub Release with generated notes.
+
 ## Known limitations
 
 - Windows 11 x64 only for MVP; Windows 10, macOS, and Linux are unverified.
