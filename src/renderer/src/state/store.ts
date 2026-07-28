@@ -351,9 +351,8 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async closeTerminal(terminalId) {
-    const state = get()
-    const workspace = state.workspaces.find((w) => w.id === state.activeWorkspaceId)
-    if (!workspace) return
+    const workspaceId = get().activeWorkspaceId
+    if (!workspaceId || !get().workspaces.some((w) => w.id === workspaceId)) return
 
     try {
       await call('terminal:terminate', { terminalId })
@@ -363,16 +362,17 @@ export const useStore = create<State>((set, get) => ({
     clearTerminalBacklog(terminalId)
     releaseTerminal(terminalId)
 
+    // The patch replaces `terminals` wholesale, so it must be built from the
+    // list as it is *after* the await — and applied locally before the write —
+    // or a second close overlapping this one would resurrect the first pane.
+    const state = get()
+    const workspace = state.workspaces.find((w) => w.id === workspaceId)
+    if (!workspace) return
+
     const terminals = workspace.terminals.filter((t) => t.id !== terminalId)
     const layout = removeTerminal(workspace.layout, terminalId)
     const remaining = collectTerminalIds(layout)
     const nextActive = state.activeTerminalId === terminalId ? (remaining[0] ?? null) : state.activeTerminalId
-
-    await persistWorkspace(set, get, workspace.id, {
-      terminals,
-      layout,
-      activeTerminalId: nextActive
-    })
 
     set((s) => {
       const sessions = { ...s.sessions }
@@ -380,12 +380,19 @@ export const useStore = create<State>((set, get) => ({
       delete sessions[terminalId]
       delete unread[terminalId]
       return {
+        workspaces: s.workspaces.map((w) => (w.id === workspaceId ? { ...w, terminals, layout } : w)),
         sessions,
         unread,
         pendingCloseTerminalId: s.pendingCloseTerminalId === terminalId ? null : s.pendingCloseTerminalId,
         activeTerminalId: nextActive,
         zoomedTerminalId: s.zoomedTerminalId === terminalId ? null : s.zoomedTerminalId
       }
+    })
+
+    await persistWorkspace(set, get, workspaceId, {
+      terminals,
+      layout,
+      activeTerminalId: nextActive
     })
   },
 

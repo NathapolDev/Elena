@@ -30,6 +30,8 @@ type Entry = {
   pendingBytes: number
   flushTimer: NodeJS.Timeout | null
   killTimer: NodeJS.Timeout | null
+  /** Set by `terminate`: the caller is done with this id, so drop the entry once the child is gone. */
+  disposeOnExit: boolean
 }
 
 export type CreateResult = { ok: true; session: RuntimeSession } | { ok: false; error: AppError }
@@ -116,7 +118,8 @@ export class PtyManager {
       pending: [],
       pendingBytes: 0,
       flushTimer: null,
-      killTimer: null
+      killTimer: null,
+      disposeOnExit: false
     }
     this.sessions.set(config.id, entry)
 
@@ -154,6 +157,11 @@ export class PtyManager {
       this.dispose(terminalId)
       return true
     }
+
+    // A running session cannot be dropped here — it still owes a graceful \x03
+    // and an exit event. Flag it so `handleExit` removes the entry instead of
+    // leaving one behind for every terminal the user ever closed.
+    entry.disposeOnExit = true
 
     if (force) {
       this.forceKill(entry)
@@ -266,6 +274,8 @@ export class PtyManager {
 
     this.events.onStatus(entry.config.id, 'exited', entry.session.pid)
     this.events.onExit(entry.config.id, exitCode, signal)
+
+    if (entry.disposeOnExit) this.sessions.delete(entry.config.id)
   }
 }
 

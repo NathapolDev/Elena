@@ -91,7 +91,7 @@ export function SplitView({
             node={active.layout}
             terminals={terminals}
             activeTerminalId={activeTerminalId}
-            path={[activeIndex]}
+            path={[...path, activeIndex]}
             onRatioChange={onRatioChange}
             onActivateTab={onActivateTab}
           />

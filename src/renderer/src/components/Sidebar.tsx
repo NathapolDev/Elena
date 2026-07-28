@@ -50,11 +50,31 @@ export function Sidebar({
   const toggleZoom = useStore((s) => s.toggleZoom)
   const activateTab = useStore((s) => s.activateTab)
 
+  const layout = workspace?.layout ?? null
   const gridPages =
-    workspace?.layout?.type === 'tabs' &&
-    workspace.layout.tabs.every((tab) => tab.id.startsWith('grid-page-'))
-      ? workspace.layout
-      : null
+    layout?.type === 'tabs' && layout.tabs.every((tab) => tab.id.startsWith('grid-page-')) ? layout : null
+
+  // Every range is derived from what a page actually holds: closing a terminal
+  // shrinks a page in place without rebalancing, and a layout grown by
+  // splitting is not capped at four either. A `tabs` layout that is not a grid
+  // has no pages to describe, so it gets no buttons rather than a misleading one.
+  type GridPageRange = { id: string; start: number; end: number; selected: boolean }
+  const gridPageRanges: GridPageRange[] = gridPages
+    ? gridPages.tabs.reduce<GridPageRange[]>((ranges, tab) => {
+        const start = (ranges[ranges.length - 1]?.end ?? 0) + 1
+        return [
+          ...ranges,
+          {
+            id: tab.id,
+            start,
+            end: start + collectTerminalIds(tab.layout).length - 1,
+            selected: tab.id === gridPages.activeTabId
+          }
+        ]
+      }, [])
+    : layout && layout.type !== 'tabs'
+      ? [{ id: 'grid-page-1', start: 1, end: collectTerminalIds(layout).length, selected: true }]
+      : []
 
   const startResize = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
@@ -193,32 +213,22 @@ export function Sidebar({
           <button type="button" className="button sidebar__new-session" onClick={onNewTerminal} aria-label="New Terminal">
             <PlusIcon size={17} /> New session
           </button>
-          {workspace.terminals.length > 0 && (
+          {gridPageRanges.length > 0 && (
             <div className="grid-pages" aria-label="Grid pages">
               <span className="sidebar__label">Grid pages</span>
               <div className="grid-pages__buttons" role="tablist" aria-label="Spatial grid pages">
-                {gridPages ? (
-                  gridPages.tabs.map((tab, index) => {
-                    const start = index * 4 + 1
-                    const end = Math.min(start + 3, workspace.terminals.length)
-                    return (
-                      <button
-                        key={tab.id}
-                        type="button"
-                        role="tab"
-                        className="grid-page-button"
-                        aria-selected={tab.id === gridPages.activeTabId}
-                        onClick={() => activateTab(tab.id)}
-                      >
-                        {start}–{end}
-                      </button>
-                    )
-                  })
-                ) : (
-                  <button type="button" role="tab" className="grid-page-button" aria-selected="true">
-                    1–{Math.min(4, workspace.terminals.length)}
+                {gridPageRanges.map((page) => (
+                  <button
+                    key={page.id}
+                    type="button"
+                    role="tab"
+                    className="grid-page-button"
+                    aria-selected={page.selected}
+                    onClick={() => activateTab(page.id)}
+                  >
+                    {page.start}–{page.end}
                   </button>
-                )}
+                ))}
               </div>
             </div>
           )}
