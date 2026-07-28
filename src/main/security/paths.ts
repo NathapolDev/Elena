@@ -74,8 +74,13 @@ export function resolveExecutable(
   const isExecutableFile = (candidate: string): boolean => {
     try {
       return statSync(candidate).isFile()
-    } catch {
-      return false
+    } catch (error) {
+      // A Windows App Execution Alias — how the Store and winget expose pwsh,
+      // and how a user's agent CLI may well be installed — is a reparse point
+      // that `stat` cannot read: it fails with EACCES while CreateProcess
+      // launches it normally. Distinguish "denied" from "absent" (ENOENT) so
+      // those executables are discoverable instead of reported as missing.
+      return (error as NodeJS.ErrnoException).code === 'EACCES'
     }
   }
 
