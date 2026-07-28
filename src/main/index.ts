@@ -6,7 +6,7 @@
  *  - a restrictive CSP applied to every response the renderer loads
  *  - navigation and window creation blocked outside an explicit allowlist
  */
-import { app, BrowserWindow, shell, session } from 'electron'
+import { app, BrowserWindow, Menu, shell, session } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { broadcast, trustWebContents } from './ipc/bus'
@@ -66,6 +66,7 @@ async function bootstrap(): Promise<void> {
 
   onSystemThemeChanged((theme) => broadcast('theme:changed', { resolvedTheme: theme }))
 
+  Menu.setApplicationMenu(null)
   createWindow()
 
   app.on('activate', () => {
@@ -84,7 +85,8 @@ function createWindow(): void {
     minWidth: 1180, // Shared UI specification: minimum window size
     minHeight: 720,
     show: false,
-    backgroundColor: resolvedTheme() === 'dark' ? '#0B1118' : '#F5F7FA',
+    autoHideMenuBar: true,
+    backgroundColor: resolvedTheme() === 'dark' ? '#282C34' : '#F5F7FA',
     title: 'Elena',
     icon: windowIcon,
     webPreferences: {

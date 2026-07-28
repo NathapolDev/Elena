@@ -37,45 +37,46 @@
   /* Makes Chromium paint native scrollbars and form controls to match. */
   color-scheme: dark;
 
-  --bg: #0b1118;
-  --surface: #111a24;
-  --surface-elevated: #17212c;
-  --surface-hover: #1c2836;
-  --divider: #263341;
-  --primary: #2f80ed;
-  --primary-contrast: #ffffff;
-  --active-terminal: #28c7fa;
-  --status-running: #67d36f;
-  --status-waiting: #f2b94b;
-  --status-error: #ef6258;
-  --text-primary: #e7edf4;
-  --text-secondary: #98a7b7;
-  --focus-ring: #28c7fa;
-  --shadow-pane: 0 8px 24px rgb(0 0 0 / 45%);
+  /* One Half Dark base with neutral UI layers for clear surface hierarchy. */
+  --bg: #282c34;
+  --surface: #21252b;
+  --surface-elevated: #2c313a;
+  --surface-hover: #3e4451;
+  --divider: #4b5263;
+  --primary: #61afef;
+  --primary-contrast: #282c34;
+  --active-terminal: #56b6c2;
+  --status-running: #98c379;
+  --status-waiting: #e5c07b;
+  --status-error: #e06c75;
+  --text-primary: #dcdfe4;
+  --text-secondary: #abb2bf;
+  --focus-ring: #61afef;
+  --shadow-pane: 0 8px 24px rgb(0 0 0 / 38%);
 
-  --term-bg: #0b1118;
-  --term-fg: #e7edf4;
-  --term-cursor: #28c7fa;
-  --term-selection: rgb(47 128 237 / 35%);
+  --term-bg: #282c34;
+  --term-fg: #dcdfe4;
+  --term-cursor: #56b6c2;
+  --term-selection: rgb(97 175 239 / 35%);
 
-  /* ANSI 0-15. Tuned for a dark background: every hue clears 4.5:1 against
-     --term-bg except `black`, which is the dim/de-emphasis slot by design. */
-  --term-black: #6b7684;
-  --term-red: #ff7b72;
-  --term-green: #69d97e;
-  --term-yellow: #e3b341;
-  --term-blue: #79b8ff;
-  --term-magenta: #d2a8ff;
-  --term-cyan: #56d4dd;
-  --term-white: #c9d1d9;
-  --term-bright-black: #8b949e;
-  --term-bright-red: #ffa198;
-  --term-bright-green: #8ae294;
-  --term-bright-yellow: #f2cc60;
-  --term-bright-blue: #a5d6ff;
-  --term-bright-magenta: #e2c5ff;
-  --term-bright-cyan: #8ce8ef;
-  --term-bright-white: #f0f6fc;
+  /* ANSI 0-15 follows the One Half Dark palette. Neutral slots provide
+     readable dim and bright text while hue slots keep the canonical values. */
+  --term-black: #5c6370;
+  --term-red: #e06c75;
+  --term-green: #98c379;
+  --term-yellow: #e5c07b;
+  --term-blue: #61afef;
+  --term-magenta: #c678dd;
+  --term-cyan: #56b6c2;
+  --term-white: #dcdfe4;
+  --term-bright-black: #7f848e;
+  --term-bright-red: #e06c75;
+  --term-bright-green: #98c379;
+  --term-bright-yellow: #e5c07b;
+  --term-bright-blue: #61afef;
+  --term-bright-magenta: #c678dd;
+  --term-bright-cyan: #56b6c2;
+  --term-bright-white: #ffffff;
 }
 
 :root[data-theme='light'] {

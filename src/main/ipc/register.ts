@@ -2,7 +2,7 @@
  * Wires the IPC contract to the stores and the PTY manager. This is the only
  * place where renderer intent turns into filesystem or process effects.
  */
-import { dialog } from 'electron'
+import { app, dialog } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { requestSchemas } from '@shared/schemas'
 import type { RuntimeSession } from '@shared/types'
@@ -27,6 +27,14 @@ export type Deps = {
 
 export function registerIpcHandlers(deps: Deps): void {
   const { workspaces, settings, presets, pty } = deps
+
+  registerCommand('app:info', requestSchemas['app:info'], () =>
+    ok({
+      appVersion: app.getVersion(),
+      electronVersion: process.versions.electron,
+      developer: 'NathapolDev'
+    })
+  )
 
   /* ---------- workspaces ---------- */
 

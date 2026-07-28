@@ -96,6 +96,12 @@ export type AppSettings = {
 
 export type ResolvedTheme = 'light' | 'dark'
 
+export type AppInfo = {
+  appVersion: string
+  electronVersion: string
+  developer: string
+}
+
 export type AppErrorCode =
   | 'EXECUTABLE_NOT_FOUND'
   | 'INVALID_CWD'

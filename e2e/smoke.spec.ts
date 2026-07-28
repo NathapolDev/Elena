@@ -9,7 +9,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
-import type { ElectronApplication, Page } from '@playwright/test'
+import type { ConsoleMessage, ElectronApplication, Page } from '@playwright/test'
+import { version as reactVersion } from 'react'
 
 let app: ElectronApplication
 let page: Page
@@ -101,7 +102,62 @@ test('opens a shell and runs a command in a real PTY', async () => {
   await expect(pane.locator('.xterm-rows')).toContainText('E2E_MARKER_OK', { timeout: 30_000 })
 })
 
+test('shows runtime About information without changing the workspace or sessions', async () => {
+  const consoleIssues: string[] = []
+  const recordConsoleIssue = (message: ConsoleMessage): void => {
+    if (message.type() === 'warning' || message.type() === 'error') consoleIssues.push(message.text())
+  }
+  page.on('console', recordConsoleIssue)
+
+  await expect(page).toHaveTitle('Elena')
+  expect(page.url()).toMatch(/^file:/)
+  await expect(page.locator('#root')).not.toBeEmpty()
+  await expect(page.locator('vite-error-overlay')).toHaveCount(0)
+
+  const workspaceTitle = await page.locator('.commandbar__title').textContent()
+  const paneCount = await page.locator('.pane').count()
+  const versions = await app.evaluate(({ app: electronApp }) => ({
+    appVersion: electronApp.getVersion(),
+    electronVersion: process.versions.electron
+  }))
+
+  const aboutButton = page.getByRole('button', { name: 'About Elena' })
+  await expect(aboutButton).toHaveClass(/icon-button/)
+  await expect(aboutButton).toHaveText('')
+  await expect(aboutButton.locator('svg')).toHaveCount(1)
+  await aboutButton.click()
+  const dialog = page.getByRole('dialog', { name: 'About Elena' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByRole('img', { name: 'Elena logo' })).toBeVisible()
+  await expect(dialog.getByText('NathapolDev', { exact: true })).toBeVisible()
+  await expect(dialog.getByText(versions.appVersion, { exact: true })).toBeVisible()
+  await expect(dialog.getByText(versions.electronVersion, { exact: true })).toBeVisible()
+  await expect(dialog.getByText(reactVersion, { exact: true })).toBeVisible()
+
+  const screenshotPath = process.env.ELENA_E2E_ABOUT_SCREENSHOT
+  if (screenshotPath) await page.screenshot({ path: screenshotPath })
+
+  await dialog.getByRole('button', { name: 'Close' }).click()
+  await expect(dialog).toHaveCount(0)
+  await expect(page.locator('.commandbar__title')).toHaveText(workspaceTitle ?? '')
+  await expect(page.locator('.pane')).toHaveCount(paneCount)
+  await expect(page.locator('.pane').first().getByText(/Running/)).toBeVisible()
+
+  await page.getByRole('button', { name: 'About Elena' }).click()
+  await page.locator('.dialog-backdrop').click({ position: { x: 5, y: 5 } })
+  await expect(page.getByRole('dialog', { name: 'About Elena' })).toHaveCount(0)
+  await expect(page.locator('.pane')).toHaveCount(paneCount)
+  expect(consoleIssues).toEqual([])
+  page.off('console', recordConsoleIssue)
+})
+
 test('keeps the requested compact chrome hidden', async () => {
+  const nativeMenuState = await app.evaluate(({ BrowserWindow, Menu }) => ({
+    applicationMenuIsNull: Menu.getApplicationMenu() === null,
+    menuBarVisible: BrowserWindow.getAllWindows()[0]?.isMenuBarVisible() ?? true
+  }))
+  expect(nativeMenuState).toEqual({ applicationMenuIsNull: true, menuBarVisible: false })
+
   await expect(page.getByRole('button', { name: 'Command Palette' })).toHaveCount(0)
   await expect(page.locator('.inspector')).toHaveCount(0)
   await expect(page.locator('.statusbar__actions')).toHaveCount(0)
@@ -217,6 +273,34 @@ test('switches theme without disturbing the running session', async () => {
 
   await page.getByRole('button', { name: 'Dark', exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark')
+  const darkTokens = await page.locator('html').evaluate((element) => {
+    const styles = getComputedStyle(element)
+    const token = (name: string): string => styles.getPropertyValue(name).trim()
+    return {
+      background: token('--bg'),
+      foreground: token('--text-primary'),
+      red: token('--status-error'),
+      yellow: token('--status-waiting'),
+      green: token('--status-running'),
+      cyan: token('--active-terminal'),
+      blue: token('--primary'),
+      purple: token('--term-magenta'),
+      terminalBackground: token('--term-bg'),
+      terminalForeground: token('--term-fg')
+    }
+  })
+  expect(darkTokens).toEqual({
+    background: '#282c34',
+    foreground: '#dcdfe4',
+    red: '#e06c75',
+    yellow: '#e5c07b',
+    green: '#98c379',
+    cyan: '#56b6c2',
+    blue: '#61afef',
+    purple: '#c678dd',
+    terminalBackground: '#282c34',
+    terminalForeground: '#dcdfe4'
+  })
   await page.getByRole('button', { name: 'Done' }).click()
 
   // The buffer and the session survived both switches (FR-25).

@@ -1093,6 +1093,48 @@ body.is-resizing * {
   font-size: 18px;
 }
 
+.about-dialog {
+  width: min(420px, 90vw);
+  align-items: center;
+  text-align: center;
+}
+
+.about-dialog__logo {
+  width: 88px;
+  height: 88px;
+  border-radius: var(--radius-pane);
+  object-fit: cover;
+  box-shadow: 0 0 0 1px var(--divider);
+}
+
+.about-dialog__status {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.about-dialog__details {
+  display: grid;
+  gap: var(--space-2);
+  width: min(280px, 70vw);
+  margin: 0;
+  text-align: left;
+}
+
+.about-dialog__details > div {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: var(--space-4);
+}
+
+.about-dialog__details dt {
+  color: var(--text-secondary);
+}
+
+.about-dialog__details dd {
+  margin: 0;
+  font-weight: 600;
+}
+
 .dialog__row {
   display: flex;
   flex-direction: column;

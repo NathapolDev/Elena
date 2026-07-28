@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Elena desktop workspace for running and supervising multiple CLI/AI agent terminal sessions",
   "main": "./out/main/index.js",
-  "author": "Elena",
+  "author": "NathapolDev",
   "license": "MIT",
   "private": true,
   "type": "module",

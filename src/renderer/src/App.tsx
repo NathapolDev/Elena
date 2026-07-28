@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { FolderIcon } from '@phosphor-icons/react/Folder'
 import { GearSixIcon } from '@phosphor-icons/react/GearSix'
+import { InfoIcon } from '@phosphor-icons/react/Info'
 import { ListIcon } from '@phosphor-icons/react/List'
 import { PlusIcon } from '@phosphor-icons/react/Plus'
 import { SquaresFourIcon } from '@phosphor-icons/react/SquaresFour'
@@ -18,6 +19,7 @@ import { RenameWorkspaceDialog } from './components/RenameWorkspaceDialog'
 import { RenameTerminalDialog } from './components/RenameTerminalDialog'
 import { NewTerminalDialog } from './components/NewTerminalDialog'
 import { SettingsDialog } from './components/SettingsDialog'
+import { AboutDialog } from './components/AboutDialog'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import { CommandPalette } from './components/CommandPalette'
 import type { Command } from './components/CommandPalette'
@@ -30,6 +32,7 @@ type Modal =
   | 'rename-terminal'
   | 'new-terminal'
   | 'settings'
+  | 'about'
   | 'delete-workspace'
   | 'palette'
 
@@ -295,6 +298,15 @@ export function App(): React.JSX.Element {
         <button
           type="button"
           className="icon-button"
+          onClick={() => setModal('about')}
+          aria-label="About Elena"
+          title="About Elena"
+        >
+          <InfoIcon size={19} />
+        </button>
+        <button
+          type="button"
+          className="icon-button"
           onClick={() => setModal('settings')}
           aria-label="Settings"
         >
@@ -378,6 +390,7 @@ export function App(): React.JSX.Element {
         <NewTerminalDialog workspace={workspace} onClose={() => setModal('none')} />
       )}
       {modal === 'settings' && <SettingsDialog onClose={() => setModal('none')} />}
+      {modal === 'about' && <AboutDialog onClose={() => setModal('none')} />}
       {modal === 'palette' && <CommandPalette commands={commands} onClose={() => setModal('none')} />}
       {modal === 'delete-workspace' && workspace && (
         <ConfirmDialog

@@ -8,6 +8,7 @@
 import type {
   AgentPreset,
   AppError,
+  AppInfo,
   AppSettings,
   GitBranchInfo,
   LayoutNode,
@@ -20,6 +21,8 @@ import type {
 } from './types'
 
 export type Commands = {
+  'app:info': { req: void; res: AppInfo }
+
   'workspace:list': { req: void; res: Workspace[] }
   'workspace:get': { req: { id: string }; res: Workspace }
   'workspace:create': { req: { name: string; projectRoot: string }; res: Workspace }
@@ -97,6 +100,7 @@ export type EventName = keyof Events
 export type EventPayload<E extends EventName> = Events[E]
 
 export const COMMAND_CHANNELS: readonly CommandName[] = [
+  'app:info',
   'workspace:list',
   'workspace:get',
   'workspace:create',

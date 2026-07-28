@@ -5,6 +5,18 @@
 import { describe, expect, it } from 'vitest'
 import { requestSchemas, workspaceFileSchema, layoutNodeSchema } from '@shared/schemas'
 
+describe('app:info payload', () => {
+  const schema = requestSchemas['app:info']
+
+  it('accepts an empty request', () => {
+    expect(schema.safeParse(undefined).success).toBe(true)
+  })
+
+  it.each([{}, null, '', 0])('rejects a non-empty request: %j', (payload) => {
+    expect(schema.safeParse(payload).success).toBe(false)
+  })
+})
+
 describe('terminal:create payload', () => {
   const schema = requestSchemas['terminal:create']
 

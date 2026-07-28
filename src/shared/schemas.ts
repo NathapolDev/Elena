@@ -98,6 +98,7 @@ export const presetsFileSchema = z.object({
 /* ---------- IPC request payloads ---------- */
 
 export const requestSchemas = {
+  'app:info': z.void().or(z.undefined()),
   'workspace:list': z.void().or(z.undefined()),
   'workspace:get': z.object({ id: z.string().min(1) }),
   'workspace:create': z.object({
