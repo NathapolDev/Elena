@@ -1,0 +1,17 @@
+{
+  // The file watcher and the search index open build output as it is written.
+  // On Windows that keeps a handle on `app.asar`, and the next `npm run
+  // build:win` or `npm ci` fails with EBUSY while trying to replace it.
+  // These directories are generated, so nothing is lost by ignoring them.
+  "files.watcherExclude": {
+    "**/node_modules/**": true,
+    "**/out/**": true,
+    "**/dist/**": true,
+    "**/release/**": true
+  },
+  "search.exclude": {
+    "**/out/**": true,
+    "**/dist/**": true,
+    "**/release/**": true
+  }
+}
