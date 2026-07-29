@@ -197,14 +197,20 @@ test('copies a terminal selection and pastes clipboard text with Ctrl+C and Ctrl
 
   await expect(pane.locator('.xterm-selection div')).toHaveCount(0)
   const terminalRows = pane.locator('.xterm-rows')
-  const countPowerShellPrompts = async (): Promise<number> =>
-    ((await terminalRows.innerText()).match(/PS [^>]*>/g) ?? []).length
-  const promptCount = await countPowerShellPrompts()
-  await page.keyboard.type('Write-Output E2E_INTERRUPT_STARTED; Start-Sleep -Seconds 30')
+  // The sleep outlives this test, so the command below can only ever run if
+  // Ctrl+C without a selection reached the PTY as an interrupt.
+  await page.keyboard.type('Write-Output E2E_INTERRUPT_STARTED; Start-Sleep -Seconds 300')
   await page.keyboard.press('Enter')
   await expect(terminalRows).toContainText('E2E_INTERRUPT_STARTED', { timeout: 30_000 })
   await page.keyboard.press('Control+KeyC')
-  await expect.poll(countPowerShellPrompts).toBeGreaterThan(promptCount)
+
+  // xterm exposes only the rendered viewport, so counting prompts is worthless
+  // here: the prompt the interrupt produces scrolls an older one off the top and
+  // the total never moves. Match the last line instead — the newest output is
+  // always on screen whatever the CI viewport height is.
+  await expect
+    .poll(async () => (await terminalRows.innerText()).trimEnd().split('\n').at(-1) ?? '')
+    .toMatch(/PS [^>]*>\s*$/)
 
   const terminalInput = pane.locator('.xterm-helper-textarea')
   await terminalInput.focus()
