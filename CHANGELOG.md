@@ -3,9 +3,9 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.0] - 2026-07-29
 
-First release, targeting 0.1.0. Windows 11 x64 only, distributed as an unsigned NSIS installer.
+First release. Windows 11 x64 only, distributed as an unsigned NSIS installer.
 
 ### Workspaces
 
