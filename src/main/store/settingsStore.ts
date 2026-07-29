@@ -65,17 +65,27 @@ export class SettingsStore {
   }
 }
 
-/** Adds newly introduced settings without discarding a user's existing values. */
+/**
+ * Adds newly introduced settings without discarding a user's existing values.
+ *
+ * Fills the gaps on every load rather than only when `schemaVersion` is behind.
+ * A version check alone is not enough because the stamp can lie: 0.1.0's schema
+ * accepts `schemaVersion: 2`, strips the typography fields it does not know, and
+ * rewrites the file still stamped 2. Coming back to a build that requires those
+ * fields, such a file would skip migration, fail validation, and be moved aside
+ * as corrupt — taking the user's theme, scrollback and shell choice with it.
+ *
+ * Existing values always win over the defaults, so this is safe to re-run and
+ * never overwrites a real preference. A file whose values are genuinely invalid
+ * still fails the schema and still gets the corrupt-file treatment.
+ */
 function migrateSettingsFile(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw
   const file = raw as Record<string, unknown>
   if (!file.settings || typeof file.settings !== 'object') return raw
-  if (typeof file.schemaVersion !== 'number' || file.schemaVersion < SETTINGS_SCHEMA_VERSION) {
-    return {
-      ...file,
-      schemaVersion: SETTINGS_SCHEMA_VERSION,
-      settings: { ...DEFAULT_SETTINGS, ...(file.settings as Record<string, unknown>) }
-    }
+  return {
+    ...file,
+    schemaVersion: SETTINGS_SCHEMA_VERSION,
+    settings: { ...DEFAULT_SETTINGS, ...(file.settings as Record<string, unknown>) }
   }
-  return file
 }

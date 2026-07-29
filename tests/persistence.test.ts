@@ -128,6 +128,40 @@ describe('transactional stores', () => {
       settings: { themePreference: 'light', scrollback: 20_000, terminalFontSize: 15 }
     })
   })
+
+  it('repairs a v2 file an older build stripped the typography fields out of', () => {
+    // 0.1.0 accepts schemaVersion 2, drops the fields its schema does not know,
+    // and rewrites the file still stamped 2. Migrating on the version alone
+    // would let that file through unchanged, fail the v2 schema, and take the
+    // user's theme and scrollback down with it as "corrupt".
+    const file = join(dir, 'settings.json')
+    writeFileSync(
+      file,
+      JSON.stringify({
+        schemaVersion: 2,
+        settings: {
+          themePreference: 'dark',
+          scrollback: 30_000,
+          confirmCloseRunning: false,
+          warnOnMultilinePaste: false,
+          defaultShellId: 'pwsh'
+        }
+      })
+    )
+
+    const store = new SettingsStore(file)
+    store.load()
+
+    expect(store.get()).toMatchObject({
+      themePreference: 'dark',
+      scrollback: 30_000,
+      defaultShellId: 'pwsh',
+      terminalFontFamily: null,
+      terminalFontSize: 13,
+      terminalLineHeight: 1.2
+    })
+    expect(readdirSync(dir).filter((name) => name.includes('corrupt'))).toEqual([])
+  })
 })
 
 describe('WorkspaceStore', () => {
