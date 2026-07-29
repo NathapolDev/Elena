@@ -9,6 +9,9 @@
 - [ ] `npm run build:win` produces the installer and `win-unpacked` app.
 - [ ] The full Electron E2E suite passes with `ELENA_E2E_EXECUTABLE` set to the packaged executable.
 - [ ] Packaged CSP, Node isolation, typed IPC sender checks, navigation blocking, path containment, and log redaction are verified.
+- [ ] The bundled font ships complete: `app.asar` contains the three `0xProtoNerdFontMono-*.ttf` faces and
+      `out/renderer/OFL-0xProto.txt`, and a terminal in the packaged app renders a Nerd Font glyph. SIL OFL 1.1
+      requires the licence to travel with the font, so a missing `OFL-0xProto.txt` blocks the release.
 - [ ] Installer is scanned, signed when a certificate is available, and smoke-tested on a clean Windows 11 x64 account.
 - [ ] GitHub CI passes from a committed baseline before publishing.
 
@@ -26,8 +29,8 @@ annotated `vX.Y.Z` tag is what creates the GitHub Release.
    ```powershell
    git fetch origin main
    git log --oneline -1 <verified-sha>   # confirm this is the gated commit
-   git tag -a v0.1.0 <verified-sha> -m "Elena v0.1.0"
-   git push origin v0.1.0
+   git tag -a v0.2.0 <verified-sha> -m "Elena v0.2.0"
+   git push origin v0.2.0
    ```
 
    Naming the SHA keeps the tag pinned to the validated commit even if `origin/main`
@@ -51,5 +54,7 @@ then attaches `Elena-<version>-x64.exe` to a GitHub Release with generated notes
 1. Stop distribution of the affected installer and retain its version, checksum, and failure report.
 2. Re-publish the last verified installer; do not overwrite versioned artifacts.
 3. Users can uninstall the affected build and reinstall the previous version. Project folders are not modified by uninstall or workspace deletion.
-4. Before downgrading across a workspace schema change, back up the app user-data directory. Schema v2 reads v1 files, but older builds do not understand v2 tab layouts.
+4. Before downgrading across a schema change, back up the app user-data directory. Version 0.2.0 migrates settings
+   from v1 to v2; version 0.1.0 does not preserve the new terminal typography fields. Older builds also do not
+   understand v2 workspace tab layouts.
 5. Fix forward on a new patch version, rerun every candidate gate, and document whether user-data migration is required.

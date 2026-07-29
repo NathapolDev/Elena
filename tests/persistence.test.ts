@@ -94,6 +94,40 @@ describe('transactional stores', () => {
     ).toThrow()
     expect(store.list()).toEqual(before)
   })
+
+  it('migrates settings v1 with the original terminal typography defaults', () => {
+    const file = join(dir, 'settings.json')
+    writeFileSync(
+      file,
+      JSON.stringify({
+        schemaVersion: 1,
+        settings: {
+          themePreference: 'light',
+          scrollback: 20_000,
+          confirmCloseRunning: false,
+          warnOnMultilinePaste: false,
+          defaultShellId: 'pwsh'
+        }
+      })
+    )
+
+    const store = new SettingsStore(file)
+    store.load()
+
+    expect(store.get()).toMatchObject({
+      themePreference: 'light',
+      scrollback: 20_000,
+      terminalFontFamily: null,
+      terminalFontSize: 13,
+      terminalLineHeight: 1.2
+    })
+
+    store.update({ terminalFontSize: 15 })
+    expect(JSON.parse(readFileSync(file, 'utf8'))).toMatchObject({
+      schemaVersion: 2,
+      settings: { themePreference: 'light', scrollback: 20_000, terminalFontSize: 15 }
+    })
+  })
 })
 
 describe('WorkspaceStore', () => {

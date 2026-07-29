@@ -24,7 +24,9 @@
   --statusbar-height: 42px;
 
   --font-ui: 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Cascadia Mono', 'Consolas', ui-monospace, monospace;
+  /* Leads with the face bundled in fonts.css; the rest are installed-only fallbacks. */
+  --font-mono: '0xProto Nerd Font Mono', 'JetBrains Mono', 'Cascadia Mono', 'Consolas', ui-monospace,
+    monospace;
 
   --font-size-sm: 12px;
   --font-size-md: 13px;

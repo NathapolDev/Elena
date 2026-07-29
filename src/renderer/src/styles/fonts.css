@@ -1,0 +1,49 @@
+/*
+ * 0xProto Nerd Font Mono — Nerd Fonts v3.4.0 patch of 0xProto v2.300.
+ * SIL OFL 1.1, no Reserved Font Name. The licence ships at out/renderer/OFL-0xProto.txt
+ * (source: src/renderer/public/OFL-0xProto.txt). See ../assets/fonts/README.md.
+ *
+ * Bundled rather than assumed-installed: Elena is offline-only, so a clean Windows
+ * machine has no Nerd Font and every powerline separator or devicon an agent CLI
+ * emits would render as tofu. Naming a family in a CSS stack does not ship it.
+ *
+ * Upstream has no bold-italic face. CSS font matching narrows by style before
+ * weight, so a bold-italic cell resolves to the 400-italic face and Chromium
+ * synthesises the weight (font-synthesis stays at its auto default). Intended.
+ *
+ * font-display: block, not swap. swap paints the fallback first and then
+ * substitutes — precisely the reflow that leaves an xterm grid measured against
+ * the wrong face. These files are on local disk, so the block period is
+ * milliseconds. optional is also wrong: it lets Chromium skip the face entirely
+ * on a slow first load, silently defeating the whole point of bundling.
+ *
+ * No local() in src: it would prefer a user's installed copy, whose version and
+ * metrics may differ, so the same app would have different cell widths on
+ * different machines — the opposite of what bundling buys.
+ *
+ * No unicode-range: the Nerd Font glyphs live in Private Use Area blocks, and
+ * narrowing the range would drop the icons this font exists for.
+ */
+@font-face {
+  font-family: '0xProto Nerd Font Mono';
+  src: url('../assets/fonts/0xProtoNerdFontMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: '0xProto Nerd Font Mono';
+  src: url('../assets/fonts/0xProtoNerdFontMono-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+@font-face {
+  font-family: '0xProto Nerd Font Mono';
+  src: url('../assets/fonts/0xProtoNerdFontMono-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: block;
+}

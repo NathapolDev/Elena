@@ -8,7 +8,12 @@ import { SquaresFourIcon } from '@phosphor-icons/react/SquaresFour'
 import { collectTerminalIds } from '@shared/layout'
 import { on } from './lib/api'
 import { dispatchTerminalData } from './lib/terminalBus'
-import { applyScrollbackToAll, applyThemeToAll } from './lib/terminalRegistry'
+import {
+  applyScrollbackToAll,
+  applyTerminalTypographyToAll,
+  applyThemeToAll,
+  remeasureTerminalFonts
+} from './lib/terminalRegistry'
 import { selectActiveWorkspace, useStore } from './state/store'
 import { loadSidebarHidden, loadSidebarWidth, saveSidebarHidden, saveSidebarWidth } from './lib/uiPrefs'
 import { Sidebar } from './components/Sidebar'
@@ -45,6 +50,9 @@ export function App(): React.JSX.Element {
   const pendingCloseTerminalId = useStore((s) => s.pendingCloseTerminalId)
   const resolvedTheme = useStore((s) => s.resolvedTheme)
   const scrollback = useStore((s) => s.settings.scrollback)
+  const terminalFontFamily = useStore((s) => s.settings.terminalFontFamily)
+  const terminalFontSize = useStore((s) => s.settings.terminalFontSize)
+  const terminalLineHeight = useStore((s) => s.settings.terminalLineHeight)
 
   const applyStatus = useStore((s) => s.applyStatus)
   const applyExit = useStore((s) => s.applyExit)
@@ -94,6 +102,27 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     applyScrollbackToAll(scrollback)
   }, [scrollback])
+
+  useEffect(() => {
+    applyTerminalTypographyToAll({
+      fontFamily: terminalFontFamily,
+      fontSize: terminalFontSize,
+      lineHeight: terminalLineHeight
+    })
+  }, [terminalFontFamily, terminalFontSize, terminalLineHeight])
+
+  // main.tsx already waits for the bundled face before mounting, but in dev the
+  // stylesheet is injected asynchronously and that gate can resolve early. Any
+  // terminal built against the fallback is re-measured here once fonts settle.
+  useEffect(() => {
+    let active = true
+    void document.fonts.ready.then(() => {
+      if (active) remeasureTerminalFonts()
+    })
+    return () => {
+      active = false
+    }
+  }, [])
 
   const terminalIds = useMemo(() => collectTerminalIds(workspace?.layout ?? null), [workspace?.layout])
 

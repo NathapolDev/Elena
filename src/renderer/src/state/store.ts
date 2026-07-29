@@ -15,6 +15,7 @@ import {
   setRatio,
   splitTerminal
 } from '@shared/layout'
+import { DEFAULT_TERMINAL_FONT_SIZE, DEFAULT_TERMINAL_LINE_HEIGHT } from '@shared/terminalTypography'
 import type {
   AgentPreset,
   AppSettings,
@@ -106,6 +107,9 @@ type State = {
 
 const DEFAULT_SETTINGS: AppSettings = {
   themePreference: 'system',
+  terminalFontFamily: null,
+  terminalFontSize: DEFAULT_TERMINAL_FONT_SIZE,
+  terminalLineHeight: DEFAULT_TERMINAL_LINE_HEIGHT,
   scrollback: 10_000,
   confirmCloseRunning: true,
   warnOnMultilinePaste: true,
