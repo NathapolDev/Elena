@@ -44,6 +44,17 @@ jobs:
       - name: Electron end-to-end tests
         run: npm run test:e2e
 
+      # A failed E2E run only prints the assertion; the page snapshot Playwright
+      # writes beside it is what shows the terminal state behind the failure.
+      - name: Upload end-to-end failure context
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: e2e-failure-context
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Package Windows application
         run: npm run build:win
 
