@@ -19,15 +19,19 @@ Merging to `main` builds and tests the app but does **not** publish anything —
 `main` leaves the installer as an expiring workflow artifact only. Pushing an
 annotated `vX.Y.Z` tag is what creates the GitHub Release.
 
-1. Confirm the candidate gate above passed on the commit you are about to tag.
-2. Tag that commit and push the tag:
+1. Run the candidate gate above against a specific commit on `main` and record its
+   full SHA. That commit — not whatever `main` points at later — is the release.
+2. Tag that exact commit and push the tag:
 
    ```powershell
-   git checkout main
-   git pull origin main
-   git tag -a v0.1.0 -m "Elena v0.1.0"
+   git fetch origin main
+   git log --oneline -1 <verified-sha>   # confirm this is the gated commit
+   git tag -a v0.1.0 <verified-sha> -m "Elena v0.1.0"
    git push origin v0.1.0
    ```
+
+   Naming the SHA keeps the tag pinned to the validated commit even if `origin/main`
+   advanced in the meantime; never tag a post-pull `HEAD`.
 
 The tag must be `v` plus the exact `version` in `package.json`; CI fails at the
 "Verify release tag matches package version" step otherwise. The `release` job runs
