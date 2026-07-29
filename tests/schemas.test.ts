@@ -109,3 +109,35 @@ describe('workspace file schema', () => {
     expect(workspaceFileSchema.safeParse({ schemaVersion: 1, workspaces: [] }).success).toBe(true)
   })
 })
+
+describe('terminal typography settings', () => {
+  const schema = requestSchemas['settings:update']
+
+  it('accepts the default and supported typography range', () => {
+    expect(
+      schema.safeParse({
+        terminalFontFamily: null,
+        terminalFontSize: 13,
+        terminalLineHeight: 1.2
+      }).success
+    ).toBe(true)
+    expect(
+      schema.safeParse({
+        terminalFontFamily: 'Cascadia Mono',
+        terminalFontSize: 48,
+        terminalLineHeight: 2
+      }).success
+    ).toBe(true)
+  })
+
+  it.each([
+    { terminalFontFamily: '' },
+    { terminalFontFamily: 'Bad\nFont' },
+    { terminalFontSize: 7 },
+    { terminalFontSize: 13.5 },
+    { terminalLineHeight: 0.9 },
+    { terminalLineHeight: 2.1 }
+  ])('rejects unsupported typography: %j', (patch) => {
+    expect(schema.safeParse(patch).success).toBe(false)
+  })
+})

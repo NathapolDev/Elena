@@ -7,6 +7,12 @@
  */
 import { z } from 'zod'
 import type { LayoutNode } from './types'
+import {
+  MAX_TERMINAL_FONT_SIZE,
+  MAX_TERMINAL_LINE_HEIGHT,
+  MIN_TERMINAL_FONT_SIZE,
+  MIN_TERMINAL_LINE_HEIGHT
+} from './terminalTypography'
 
 export const themePreferenceSchema = z.enum(['light', 'dark', 'system'])
 
@@ -70,6 +76,15 @@ export const agentPresetSchema = z.object({
 
 export const appSettingsSchema = z.object({
   themePreference: themePreferenceSchema,
+  terminalFontFamily: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .regex(/^\P{Cc}+$/u)
+    .nullable(),
+  terminalFontSize: z.number().int().min(MIN_TERMINAL_FONT_SIZE).max(MAX_TERMINAL_FONT_SIZE),
+  terminalLineHeight: z.number().min(MIN_TERMINAL_LINE_HEIGHT).max(MAX_TERMINAL_LINE_HEIGHT),
   scrollback: z.number().int().min(1000).max(200_000),
   confirmCloseRunning: z.boolean(),
   warnOnMultilinePaste: z.boolean(),
@@ -77,7 +92,7 @@ export const appSettingsSchema = z.object({
 })
 
 export const WORKSPACE_SCHEMA_VERSION = 2
-export const SETTINGS_SCHEMA_VERSION = 1
+export const SETTINGS_SCHEMA_VERSION = 2
 export const PRESETS_SCHEMA_VERSION = 1
 
 export const workspaceFileSchema = z.object({

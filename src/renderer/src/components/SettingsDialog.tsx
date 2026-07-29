@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useStore } from '../state/store'
 import type { AgentPreset, ThemePreference } from '@shared/types'
+import { TerminalTypographySettings } from './TerminalTypographySettings'
 
 const THEME_OPTIONS: Array<{ value: ThemePreference; label: string }> = [
   { value: 'light', label: 'Light' },
@@ -114,6 +115,8 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             ))}
           </select>
         </div>
+
+        <TerminalTypographySettings />
 
         <div className="dialog__row">
           <label htmlFor="scrollback">Scrollback lines</label>

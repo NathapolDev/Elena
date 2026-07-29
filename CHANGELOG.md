@@ -3,6 +3,26 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] - 2026-07-29
+
+### Added
+
+- Terminal typography settings can load and search font families installed on the machine, then apply the
+  selected family to existing and new terminals without clearing their buffers.
+- Terminal font size is configurable from 8–48 px and line height from 1.0–2.0, with a live preview and a reset
+  action that restores the original 13 px and 1.2 defaults.
+- 0xProto Nerd Font Mono ships inside the application and is now the default terminal font, so powerline separators
+  and developer icons render on a machine that has never installed a Nerd Font and without any network access.
+  Regular, bold, and italic faces are included; upstream has no bold-italic face, so that combination is synthesised.
+
+### Changed
+
+- The default terminal font stack leads with the bundled 0xProto Nerd Font Mono. Previously installed fallbacks
+  (JetBrains Mono, Cascadia Mono, Consolas) remain behind it, and an explicitly selected family still wins.
+
+- Terminal typography preferences persist across relaunches. Settings files migrate from schema v1 to v2 while
+  preserving existing preferences and filling in the original terminal typography defaults.
+
 ## [0.1.0] - 2026-07-29
 
 First release. Windows 11 x64 only, distributed as an unsigned NSIS installer.

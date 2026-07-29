@@ -14,6 +14,12 @@ import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
 import type { ITheme } from '@xterm/xterm'
+import {
+  DEFAULT_TERMINAL_FONT_SIZE,
+  DEFAULT_TERMINAL_FONT_STACK,
+  DEFAULT_TERMINAL_LINE_HEIGHT,
+  terminalFontStack
+} from '@shared/terminalTypography'
 import { call } from './api'
 import { onTerminalData } from './terminalBus'
 
@@ -31,6 +37,18 @@ export type TerminalEntry = {
 }
 
 const registry = new Map<string, TerminalEntry>()
+
+export type TerminalTypography = {
+  fontFamily: string | null
+  fontSize: number
+  lineHeight: number
+}
+
+let currentTypography: TerminalTypography = {
+  fontFamily: null,
+  fontSize: DEFAULT_TERMINAL_FONT_SIZE,
+  lineHeight: DEFAULT_TERMINAL_LINE_HEIGHT
+}
 
 /**
  * A divider drag fires the pane's ResizeObserver on every pointer move. Each
@@ -108,9 +126,11 @@ export function acquireTerminal(
 
   const windowsPty = windowsPtyOptions()
   const term = new Terminal({
-    fontFamily: "'JetBrains Mono', 'Cascadia Mono', Consolas, ui-monospace, monospace",
-    fontSize: 13,
-    lineHeight: 1.2,
+    fontFamily: currentTypography.fontFamily
+      ? terminalFontStack(currentTypography.fontFamily)
+      : DEFAULT_TERMINAL_FONT_STACK,
+    fontSize: currentTypography.fontSize,
+    lineHeight: currentTypography.lineHeight,
     cursorBlink: true,
     scrollback: options.scrollback,
     allowProposedApi: true,
@@ -209,4 +229,39 @@ export function applyThemeToAll(): void {
 
 export function applyScrollbackToAll(scrollback: number): void {
   for (const entry of registry.values()) entry.term.options.scrollback = scrollback
+}
+
+export function applyTerminalTypographyToAll(typography: TerminalTypography): void {
+  currentTypography = { ...typography }
+  const fontFamily = terminalFontStack(typography.fontFamily)
+  for (const entry of registry.values()) {
+    entry.term.options.fontFamily = fontFamily
+    entry.term.options.fontSize = typography.fontSize
+    entry.term.options.lineHeight = typography.lineHeight
+    entry.scheduleFit()
+  }
+}
+
+/**
+ * A face that finishes decoding after a Terminal was constructed leaves that
+ * terminal measured against the fallback. xterm exposes no way to ask for a
+ * re-measure, and CharSizeService only listens for a fontFamily/fontSize option
+ * *change* — OptionsService drops a write whose value is identical, so
+ * reassigning the same stack does nothing at all. Nudge through an equivalent
+ * value first to force the measure, then re-fit against the new cell box.
+ *
+ * The intermediate value appends a redundant `monospace` to a stack that already
+ * ends in `monospace`, so it selects the identical face; even a paint landing
+ * between the two writes is visually identical.
+ *
+ * No clearTextureAtlas() call: the DOM renderer has no atlas. Add one here if
+ * @xterm/addon-webgl is ever adopted.
+ */
+export function remeasureTerminalFonts(): void {
+  const fontFamily = terminalFontStack(currentTypography.fontFamily)
+  for (const entry of registry.values()) {
+    entry.term.options.fontFamily = `${fontFamily}, monospace`
+    entry.term.options.fontFamily = fontFamily
+    entry.fitNow()
+  }
 }

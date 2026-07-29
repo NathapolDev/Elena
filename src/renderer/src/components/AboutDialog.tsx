@@ -70,6 +70,12 @@ export function AboutDialog({ onClose }: { onClose: () => void }): React.JSX.Ele
           )}
         </div>
 
+        {/* Outside the status block on purpose: OFL 1.1 attribution has to show
+            even when the app:info call fails. */}
+        <p className="about-dialog__legal">
+          Terminal font: 0xProto Nerd Font Mono, © 2023 0xType Project Authors, SIL Open Font License 1.1.
+        </p>
+
         <div className="dialog__actions">
           <button type="button" className="button button--primary" onClick={onClose}>
             Close

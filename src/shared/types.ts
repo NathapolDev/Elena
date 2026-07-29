@@ -88,6 +88,9 @@ export type ThemePreference = 'light' | 'dark' | 'system'
 
 export type AppSettings = {
   themePreference: ThemePreference
+  terminalFontFamily: string | null
+  terminalFontSize: number
+  terminalLineHeight: number
   scrollback: number
   confirmCloseRunning: boolean
   warnOnMultilinePaste: boolean

@@ -1,3 +1,4 @@
+@import './fonts.css';
 @import './tokens.css';
 @import '@xterm/xterm/css/xterm.css';
 
@@ -1112,6 +1113,14 @@ body.is-resizing * {
   color: var(--text-secondary);
 }
 
+.about-dialog__legal {
+  margin: 0;
+  max-width: min(320px, 80vw);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  text-align: center;
+}
+
 .about-dialog__details {
   display: grid;
   gap: var(--space-2);
@@ -1144,6 +1153,52 @@ body.is-resizing * {
 .dialog__row label {
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
+}
+
+.terminal-typography {
+  border-block: 1px solid var(--divider);
+  padding-block: var(--space-4);
+}
+
+.terminal-typography__font {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.terminal-typography__font-actions {
+  flex-wrap: wrap;
+}
+
+.terminal-typography__metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.terminal-typography__metrics label {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.terminal-typography__preview {
+  min-height: 52px;
+  overflow: hidden;
+  padding: var(--space-3);
+  color: var(--term-fg);
+  background: var(--term-bg);
+  border: 1px solid var(--divider);
+  border-radius: var(--radius-control);
+  white-space: nowrap;
+}
+
+.terminal-typography__message,
+.terminal-typography__footer {
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.terminal-typography__footer {
+  justify-content: space-between;
 }
 
 .dialog__inline {

@@ -89,6 +89,14 @@ Build artifacts are written to `release/`. See the [release checklist](./RELEASE
 - **Restricted navigation** blocks unapproved navigation, new windows, webviews, and privileged IPC senders.
 - **Privacy-conscious logging** excludes terminal input, output, and environment values while redacting token-like metadata.
 
+## Third-Party Assets
+
+- **0xProto Nerd Font Mono** (Nerd Fonts v3.4.0 patch of [0xProto](https://github.com/0xType/0xProto) v2.300) is bundled
+  as the default terminal font, so Nerd Font glyphs render on a machine that has never installed one. Regular, bold, and
+  italic faces ship; upstream has no bold-italic face, so that combination is synthesised.
+- Licensed under the SIL Open Font License 1.1 with no Reserved Font Name. The licence travels with the application at
+  `resources/app.asar` → `renderer/OFL-0xProto.txt`, and in this repository at `src/renderer/public/OFL-0xProto.txt`.
+
 ## Known Limitations
 
 - Windows 11 x64 is the only verified platform.
