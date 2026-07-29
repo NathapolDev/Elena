@@ -202,15 +202,27 @@ test('copies a terminal selection and pastes clipboard text with Ctrl+C and Ctrl
   await page.keyboard.type('Write-Output E2E_INTERRUPT_STARTED; Start-Sleep -Seconds 300')
   await page.keyboard.press('Enter')
   await expect(terminalRows).toContainText('E2E_INTERRUPT_STARTED', { timeout: 30_000 })
-  await page.keyboard.press('Control+KeyC')
 
-  // xterm exposes only the rendered viewport, so counting prompts is worthless
-  // here: the prompt the interrupt produces scrolls an older one off the top and
-  // the total never moves. Match the last line instead — the newest output is
-  // always on screen whatever the CI viewport height is.
+  // The renderer turns Ctrl+C without a selection into \x03 on the PTY, but
+  // ConPTY only raises a console interrupt from that byte while the shell holds
+  // the console in processed-input mode — a window a loaded runner can miss,
+  // leaving the shell asleep with no prompt and nothing else to observe. Repeat
+  // the keystroke the way a user would; a Ctrl+C that never interrupts still
+  // fails here, because the sleep outlives every timeout in this test.
+  //
+  // Match the prompt rather than counting prompts: xterm exposes only the
+  // rendered viewport, so the prompt an interrupt produces pushes an older one
+  // off the top and the total never moves. The tail is the assertion's value so
+  // a failure reports what the shell was actually showing.
   await expect
-    .poll(async () => (await terminalRows.innerText()).trimEnd().split('\n').at(-1) ?? '')
-    .toMatch(/PS [^>]*>\s*$/)
+    .poll(
+      async () => {
+        await page.keyboard.press('Control+KeyC')
+        return (await terminalRows.innerText()).trimEnd().split('\n').slice(-3).join('\n')
+      },
+      { timeout: 30_000 }
+    )
+    .toMatch(/^PS [^>\n]*>\s*$/m)
 
   const terminalInput = pane.locator('.xterm-helper-textarea')
   await terminalInput.focus()
