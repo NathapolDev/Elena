@@ -62,7 +62,10 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: elena-windows
-          path: release/*.exe
+          path: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
           if-no-files-found: error
 
   release:
@@ -82,5 +85,8 @@ jobs:
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
         with:
-          files: release/*.exe
+          files: |
+            release/*.exe
+            release/*.exe.blockmap
+            release/latest.yml
           generate_release_notes: true

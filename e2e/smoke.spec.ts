@@ -26,8 +26,12 @@ function launchApp(): Promise<ElectronApplication> {
   const executablePath = process.env.ELENA_E2E_EXECUTABLE
   return electron.launch(
     executablePath
-      ? { executablePath, args: [`--user-data-dir=${userData}`] }
-      : { args: ['.', `--user-data-dir=${userData}`], cwd: process.cwd() }
+      ? { executablePath, args: [`--user-data-dir=${userData}`], env: { ...process.env, ELENA_E2E: '1' } }
+      : {
+          args: ['.', `--user-data-dir=${userData}`],
+          cwd: process.cwd(),
+          env: { ...process.env, ELENA_E2E: '1' }
+        }
   )
 }
 
@@ -133,6 +137,9 @@ test('shows runtime About information without changing the workspace or sessions
   await expect(dialog.getByText(versions.appVersion, { exact: true })).toBeVisible()
   await expect(dialog.getByText(versions.electronVersion, { exact: true })).toBeVisible()
   await expect(dialog.getByText(reactVersion, { exact: true })).toBeVisible()
+  await expect(dialog.getByRole('heading', { name: 'Updates' })).toBeVisible()
+  await expect(dialog.getByText('Automatic updates are available in installed Windows builds.')).toBeVisible()
+  await expect(dialog.getByRole('button', { name: 'Check for updates' })).toBeDisabled()
 
   const screenshotPath = process.env.ELENA_E2E_ABOUT_SCREENSHOT
   if (screenshotPath) await page.screenshot({ path: screenshotPath })

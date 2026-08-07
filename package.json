@@ -1,6 +1,6 @@
 {
   "name": "elena",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Elena desktop workspace for running and supervising multiple CLI/AI agent terminal sessions",
   "main": "./out/main/index.js",
   "author": "NathapolDev",
@@ -22,7 +22,7 @@
     "dev": "electron-vite dev",
     "start": "electron-vite preview",
     "build": "npm run typecheck && electron-vite build",
-    "build:win": "npm run build && electron-builder --win --publish never",
+    "build:win": "npm run build && electron-builder --win --publish never && node scripts/verify-update-artifacts.mjs",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
@@ -33,6 +33,7 @@
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",
+    "electron-updater": "6.8.9",
     "node-pty": "1.1.0"
   },
   "devDependencies": {

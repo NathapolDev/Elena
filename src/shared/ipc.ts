@@ -17,11 +17,15 @@ import type {
   SessionStatus,
   ShellInfo,
   TerminalConfig,
+  UpdateState,
   Workspace
 } from './types'
 
 export type Commands = {
   'app:info': { req: void; res: AppInfo }
+  'app:update-status': { req: void; res: UpdateState }
+  'app:update-check': { req: void; res: UpdateState }
+  'app:update-install': { req: void; res: { started: true } }
 
   'workspace:list': { req: void; res: Workspace[] }
   'workspace:get': { req: { id: string }; res: Workspace }
@@ -94,6 +98,7 @@ export type Events = {
   'workspace:changed': { workspaceId: string | null }
   'theme:changed': { resolvedTheme: ResolvedTheme }
   'app:error': AppError
+  'app:update-state': UpdateState
 }
 
 export type EventName = keyof Events
@@ -101,6 +106,9 @@ export type EventPayload<E extends EventName> = Events[E]
 
 export const COMMAND_CHANNELS: readonly CommandName[] = [
   'app:info',
+  'app:update-status',
+  'app:update-check',
+  'app:update-install',
   'workspace:list',
   'workspace:get',
   'workspace:create',
@@ -131,5 +139,6 @@ export const EVENT_CHANNELS: readonly EventName[] = [
   'terminal:exit',
   'workspace:changed',
   'theme:changed',
-  'app:error'
+  'app:error',
+  'app:update-state'
 ] as const

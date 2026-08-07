@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Elena — a local-only Windows 11 x64 Electron desktop app that runs and supervises multiple shell / CLI-agent
 sessions (Claude Code, Codex CLI, plain shells) in persisted tabs and split panes. React 19 renderer, `node-pty` for
-real PTYs, `electron-vite` build, no network features.
+real PTYs, and `electron-vite` build. Packaged Windows builds use the network only for stable GitHub Release updates.
 
 ## Commands
 

@@ -105,6 +105,22 @@ export type AppInfo = {
   developer: string
 }
 
+export type UpdateState =
+  | { status: 'idle'; currentVersion: string; supported: boolean }
+  | { status: 'checking'; currentVersion: string }
+  | { status: 'up-to-date'; currentVersion: string; latestVersion: string }
+  | {
+      status: 'downloading'
+      currentVersion: string
+      latestVersion: string
+      percent: number
+      transferred: number
+      total: number
+      bytesPerSecond: number
+    }
+  | { status: 'ready'; currentVersion: string; latestVersion: string }
+  | { status: 'error'; currentVersion: string; latestVersion?: string; message: string }
+
 export type AppErrorCode =
   | 'EXECUTABLE_NOT_FOUND'
   | 'INVALID_CWD'
