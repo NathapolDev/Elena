@@ -14,7 +14,11 @@
   <img alt="Electron 43" src="https://img.shields.io/badge/Electron-43-47848F?logo=electron&logoColor=white">
 </p>
 
-Elena is a local-only Windows desktop workspace for running shells and CLI agents side by side. It preserves workspace configuration, terminal tabs, and split layouts between launches while keeping project files and processes under your control.
+Elena is a local-first Windows desktop workspace for running shells and CLI agents side by side. It preserves workspace configuration, terminal tabs, and split layouts between launches while keeping project files and processes under your control. Packaged builds contact GitHub Releases only to check for application updates.
+
+## App Preview
+
+![Elena app preview showing multiple terminal and CLI-agent sessions](./docs/images/app-preview.png)
 
 ## Download
 
@@ -30,6 +34,7 @@ Under **Assets**, download `Elena-<version>-x64.exe` and run it. Elena is not ye
 - **Persistent setup** — restore workspaces, terminal configuration, names, and layouts after relaunching Elena.
 - **Focused controls** — rename, search, zoom, restart, stop, and close sessions without leaving the workspace.
 - **Live appearance** — switch between light, dark, and system themes without remounting active terminals.
+- **Automatic updates** — check stable GitHub Releases, track download progress, and install after a confirmed restart.
 - **Keyboard-first navigation** — create, switch, rename, and manage sessions through global shortcuts and the command palette.
 - **Local security boundary** — sandboxed rendering, typed IPC, path validation, and redacted logs keep privileged operations in the Electron main process.
 

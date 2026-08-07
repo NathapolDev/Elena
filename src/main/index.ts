@@ -17,6 +17,9 @@ import { SettingsStore } from './store/settingsStore'
 import { WorkspaceStore } from './store/workspaceStore'
 import { applyThemePreference, onSystemThemeChanged, resolvedTheme } from './theme'
 import { logger } from './logger'
+import { UpdateManager } from './update/UpdateManager'
+import { currentDistribution, updatesSupported } from './update/distribution'
+import { createDisabledUpdaterClient, createElectronUpdaterClient } from './update/electronUpdaterClient'
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const isDev = !app.isPackaged
@@ -55,6 +58,15 @@ if (!app.requestSingleInstanceLock()) {
 async function bootstrap(): Promise<void> {
   await app.whenReady()
 
+  // Only load electron-updater where it can actually run (packaged Windows).
+  const updatesEnabled = updatesSupported(currentDistribution())
+  const updateClient = updatesEnabled ? await createElectronUpdaterClient() : createDisabledUpdaterClient()
+  const updates = new UpdateManager(updateClient, {
+    enabled: updatesEnabled,
+    currentVersion: app.getVersion(),
+    emit: (state) => broadcast('app:update-state', state)
+  })
+
   workspaces.load()
   settings.load()
   presets.load()
@@ -62,12 +74,13 @@ async function bootstrap(): Promise<void> {
 
   applyContentSecurityPolicy()
   hardenWebContents()
-  registerIpcHandlers({ workspaces, settings, presets, pty, getWindow: () => mainWindow })
+  registerIpcHandlers({ workspaces, settings, presets, pty, updates, getWindow: () => mainWindow })
 
   onSystemThemeChanged((theme) => broadcast('theme:changed', { resolvedTheme: theme }))
 
   Menu.setApplicationMenu(null)
   createWindow()
+  void updates.check()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

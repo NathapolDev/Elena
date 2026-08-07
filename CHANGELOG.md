@@ -3,6 +3,19 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-07-31
+
+### Added
+
+- Packaged Windows builds check stable GitHub Releases on startup and on demand from About Elena, then show
+  download progress and offer a confirmed silent restart-and-install flow.
+- Release builds now include the NSIS installer, differential update blockmap, and `latest.yml` channel metadata.
+
+### Changed
+
+- The release pipeline publishes every file required by the built-in updater. Existing 0.2.0 installations still
+  need one manual upgrade to 0.3.0 before future updates can install automatically.
+
 ## [0.2.0] - 2026-07-29
 
 ### Added

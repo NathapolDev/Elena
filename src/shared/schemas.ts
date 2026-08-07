@@ -114,6 +114,9 @@ export const presetsFileSchema = z.object({
 
 export const requestSchemas = {
   'app:info': z.void().or(z.undefined()),
+  'app:update-status': z.void().or(z.undefined()),
+  'app:update-check': z.void().or(z.undefined()),
+  'app:update-install': z.void().or(z.undefined()),
   'workspace:list': z.void().or(z.undefined()),
   'workspace:get': z.object({ id: z.string().min(1) }),
   'workspace:create': z.object({

@@ -23,4 +23,9 @@ nsis:
   perMachine: false
   allowToChangeInstallationDirectory: true
   deleteAppDataOnUninstall: false
-publish: null
+publish:
+  provider: github
+  owner: NathapolDev
+  repo: Elena
+  channel: latest
+  releaseType: release

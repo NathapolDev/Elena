@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FolderIcon } from '@phosphor-icons/react/Folder'
 import { GearSixIcon } from '@phosphor-icons/react/GearSix'
 import { InfoIcon } from '@phosphor-icons/react/Info'
@@ -6,7 +6,8 @@ import { ListIcon } from '@phosphor-icons/react/List'
 import { PlusIcon } from '@phosphor-icons/react/Plus'
 import { SquaresFourIcon } from '@phosphor-icons/react/SquaresFour'
 import { collectTerminalIds } from '@shared/layout'
-import { on } from './lib/api'
+import type { UpdateState } from '@shared/types'
+import { call, on } from './lib/api'
 import { dispatchTerminalData } from './lib/terminalBus'
 import {
   applyScrollbackToAll,
@@ -58,6 +59,7 @@ export function App(): React.JSX.Element {
   const applyExit = useStore((s) => s.applyExit)
   const setResolvedTheme = useStore((s) => s.setResolvedTheme)
   const pushToast = useStore((s) => s.pushToast)
+  const pushError = useStore((s) => s.pushError)
   const updateRatio = useStore((s) => s.updateRatio)
   const activateTab = useStore((s) => s.activateTab)
   const cycleTerminal = useStore((s) => s.cycleTerminal)
@@ -70,12 +72,41 @@ export function App(): React.JSX.Element {
   const arrangeSpatialGrid = useStore((s) => s.arrangeSpatialGrid)
 
   const [modal, setModal] = useState<Modal>('none')
+  const [updateState, setUpdateState] = useState<UpdateState | null>(null)
+  const readyToastVersion = useRef<string | null>(null)
   const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
   const [sidebarHidden, setSidebarHidden] = useState(loadSidebarHidden)
+
+  const applyUpdateState = useCallback(
+    (state: UpdateState): void => {
+      setUpdateState(state)
+      if (state.status === 'ready' && readyToastVersion.current !== state.latestVersion) {
+        readyToastVersion.current = state.latestVersion
+        pushToast({
+          title: 'Update ready',
+          body: `Elena ${state.latestVersion} is ready to install.`,
+          tone: 'info'
+        })
+      }
+    },
+    [pushToast]
+  )
 
   useEffect(() => {
     void bootstrap()
   }, [bootstrap])
+
+  useEffect(() => {
+    let active = true
+    void call('app:update-status')
+      .then((state) => {
+        if (active) applyUpdateState(state)
+      })
+      .catch(pushError)
+    return () => {
+      active = false
+    }
+  }, [applyUpdateState, pushError])
 
   useEffect(() => saveSidebarWidth(sidebarWidth), [sidebarWidth])
   useEffect(() => saveSidebarHidden(sidebarHidden), [sidebarHidden])
@@ -87,10 +118,11 @@ export function App(): React.JSX.Element {
       on('terminal:status-changed', ({ terminalId, status, pid }) => applyStatus(terminalId, status, pid)),
       on('terminal:exit', ({ terminalId, exitCode, signal }) => applyExit(terminalId, exitCode, signal)),
       on('theme:changed', ({ resolvedTheme: theme }) => setResolvedTheme(theme)),
-      on('app:error', (error) => pushToast({ title: 'Error', body: error.message, tone: 'error' }))
+      on('app:error', (error) => pushToast({ title: 'Error', body: error.message, tone: 'error' })),
+      on('app:update-state', applyUpdateState)
     ]
     return () => unsubscribers.forEach((off) => off())
-  }, [applyExit, applyStatus, pushToast, setResolvedTheme])
+  }, [applyExit, applyStatus, applyUpdateState, pushToast, setResolvedTheme])
 
   /* ---------- theme is a single attribute flip: no remount, no buffer loss ---------- */
   useEffect(() => {
@@ -419,7 +451,13 @@ export function App(): React.JSX.Element {
         <NewTerminalDialog workspace={workspace} onClose={() => setModal('none')} />
       )}
       {modal === 'settings' && <SettingsDialog onClose={() => setModal('none')} />}
-      {modal === 'about' && <AboutDialog onClose={() => setModal('none')} />}
+      {modal === 'about' && (
+        <AboutDialog
+          updateState={updateState}
+          onCheck={async () => setUpdateState(await call('app:update-check'))}
+          onClose={() => setModal('none')}
+        />
+      )}
       {modal === 'palette' && <CommandPalette commands={commands} onClose={() => setModal('none')} />}
       {modal === 'delete-workspace' && workspace && (
         <ConfirmDialog

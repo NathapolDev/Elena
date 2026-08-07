@@ -16,17 +16,19 @@ import type { PtyManager } from '../pty/PtyManager'
 import type { PresetStore } from '../store/presetStore'
 import type { SettingsStore } from '../store/settingsStore'
 import type { WorkspaceStore } from '../store/workspaceStore'
+import type { UpdateManager } from '../update/UpdateManager'
 
 export type Deps = {
   workspaces: WorkspaceStore
   settings: SettingsStore
   presets: PresetStore
   pty: PtyManager
+  updates: UpdateManager
   getWindow: () => BrowserWindow | null
 }
 
 export function registerIpcHandlers(deps: Deps): void {
-  const { workspaces, settings, presets, pty } = deps
+  const { workspaces, settings, presets, pty, updates } = deps
 
   registerCommand('app:info', requestSchemas['app:info'], () =>
     ok({
@@ -34,6 +36,14 @@ export function registerIpcHandlers(deps: Deps): void {
       electronVersion: process.versions.electron,
       developer: 'NathapolDev'
     })
+  )
+
+  registerCommand('app:update-status', requestSchemas['app:update-status'], () => ok(updates.getState()))
+  registerCommand('app:update-check', requestSchemas['app:update-check'], async () => ok(await updates.check()))
+  registerCommand('app:update-install', requestSchemas['app:update-install'], () =>
+    updates.install()
+      ? ok({ started: true as const })
+      : fail('VALIDATION_FAILED', 'The update is not ready to install.')
   )
 
   /* ---------- workspaces ---------- */
