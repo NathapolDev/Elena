@@ -13,6 +13,7 @@ import type {
   GitBranchInfo,
   LayoutNode,
   ResolvedTheme,
+  Result,
   RuntimeSession,
   SessionStatus,
   ShellInfo,
@@ -104,7 +105,14 @@ export type Events = {
 export type EventName = keyof Events
 export type EventPayload<E extends EventName> = Events[E]
 
-export const COMMAND_CHANNELS: readonly CommandName[] = [
+/**
+ * The channel allowlists are `as const` **without** a type annotation on purpose.
+ * Annotating them `readonly CommandName[]` widens the literal tuple back to an
+ * array, and a missing entry then compiles cleanly — which for events is silent:
+ * `subscribe` returns a no-op unsubscribe and the event never arrives. The
+ * exhaustiveness assertion below is what turns that into a compile error.
+ */
+export const COMMAND_CHANNELS = [
   'app:info',
   'app:update-status',
   'app:update-check',
@@ -131,9 +139,9 @@ export const COMMAND_CHANNELS: readonly CommandName[] = [
   'settings:update',
   'dialog:pick-directory',
   'path:validate'
-] as const
+] as const satisfies readonly CommandName[]
 
-export const EVENT_CHANNELS: readonly EventName[] = [
+export const EVENT_CHANNELS = [
   'terminal:data',
   'terminal:status-changed',
   'terminal:exit',
@@ -141,4 +149,44 @@ export const EVENT_CHANNELS: readonly EventName[] = [
   'theme:changed',
   'app:error',
   'app:update-state'
-] as const
+] as const satisfies readonly EventName[]
+
+/**
+ * Contract completeness. `satisfies` above proves every listed channel is real;
+ * these prove the converse — that every declared command and event is listed.
+ * Adding a `Commands`/`Events` member without an allowlist entry resolves the
+ * matching type to `never` and fails `npm run typecheck`.
+ *
+ * Exported rather than a bare local so `noUnusedLocals` stays happy, and read by
+ * `tests/ipc-contract.test.ts` so deleting it is also a test failure.
+ */
+type CommandChannelsComplete =
+  Exclude<CommandName, (typeof COMMAND_CHANNELS)[number]> extends never ? true : never
+type EventChannelsComplete =
+  Exclude<EventName, (typeof EVENT_CHANNELS)[number]> extends never ? true : never
+
+export const CONTRACT_COMPLETE: readonly [CommandChannelsComplete, EventChannelsComplete] = [true, true]
+
+/**
+ * The bridge shape on `window.elena`.
+ *
+ * It lives here rather than in the preload because it is the one part of the
+ * contract both sides need and neither project can reach the other's copy:
+ * `tsconfig.web.json` includes only `src/preload/*.d.ts`, so the renderer cannot
+ * import `src/preload/index.ts` (it pulls in `electron`). Declaring the shape
+ * once in shared code means `index.ts` (implementation) and `index.d.ts`
+ * (`Window` augmentation) are checked against the same type instead of two
+ * hand-written copies that drift silently.
+ */
+export type WorkspacesApi = {
+  invoke<C extends CommandName>(
+    channel: C,
+    payload?: CommandRequest<C>
+  ): Promise<Result<CommandResponse<C>>>
+  subscribe<E extends EventName>(channel: E, listener: (payload: EventPayload<E>) => void): () => void
+  platform: string
+  /** Windows build number (eg. 26200), or null off Windows. */
+  windowsBuild: number | null
+  zoomIn(): number
+  zoomOut(): number
+}

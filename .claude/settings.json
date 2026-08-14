@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(gh api:*)",
+      "Bash(gh run:*)",
+      "Bash(gh pr view:*)",
+      "PowerShell(npm run lint)",
+      "PowerShell(npm run typecheck)",
+      "PowerShell(npm run typecheck:node)",
+      "PowerShell(npm run typecheck:web)",
+      "PowerShell(npm test)",
+      "PowerShell(npx vitest run:*)",
+      "PowerShell(npx eslint:*)",
+      "PowerShell(npx playwright test:*)",
+      "Bash(node .claude/hooks/:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Write(./out/**)",
+      "Edit(./out/**)",
+      "Write(./release/**)",
+      "Edit(./release/**)",
+      "Write(./node_modules/**)",
+      "Edit(./node_modules/**)",
+      "Write(./package-lock.json)",
+      "Edit(./package-lock.json)",
+      "Write(./.claude/settings.local.json)",
+      "Edit(./.claude/settings.local.json)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "node .claude/hooks/lint-edited.mjs", "timeout": 60 },
+          { "type": "command", "command": "node .claude/hooks/contract-guard.mjs", "timeout": 90 }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [{ "type": "command", "command": "node .claude/hooks/stop-gate.mjs", "timeout": 300 }]
+      }
+    ]
+  }
+}

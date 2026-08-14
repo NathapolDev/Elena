@@ -6,6 +6,7 @@
  * truncated file degrades into a recoverable error instead of a crash (FR-04).
  */
 import { z } from 'zod'
+import type { CommandName } from './ipc'
 import type { LayoutNode } from './types'
 import {
   MAX_TERMINAL_FONT_SIZE,
@@ -112,6 +113,11 @@ export const presetsFileSchema = z.object({
 
 /* ---------- IPC request payloads ---------- */
 
+/**
+ * `satisfies Record<CommandName, …>` makes a *missing* key a compile error, not
+ * just a wrong one, which is what lets `tests/ipc-contract.test.ts` treat
+ * `Object.keys(requestSchemas)` as the authoritative command list.
+ */
 export const requestSchemas = {
   'app:info': z.void().or(z.undefined()),
   'app:update-status': z.void().or(z.undefined()),
@@ -176,7 +182,7 @@ export const requestSchemas = {
     path: z.string().min(1).max(1024),
     mustBeInside: z.string().max(1024).optional()
   })
-} as const
+} as const satisfies Record<CommandName, z.ZodType>
 
 export type RequestSchemas = typeof requestSchemas
 export type IpcCommand = keyof RequestSchemas

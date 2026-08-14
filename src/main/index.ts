@@ -12,6 +12,12 @@ import { fileURLToPath } from 'node:url'
 import { broadcast, trustWebContents } from './ipc/bus'
 import { registerIpcHandlers } from './ipc/register'
 import { PtyManager } from './pty/PtyManager'
+import {
+  BROWSER_WINDOW_WEB_PREFERENCES,
+  contentSecurityPolicy,
+  isAllowedExternalUrl,
+  isAllowedNavigationUrl
+} from './security/posture'
 import { PresetStore } from './store/presetStore'
 import { SettingsStore } from './store/settingsStore'
 import { WorkspaceStore } from './store/workspaceStore'
@@ -104,12 +110,7 @@ function createWindow(): void {
     icon: windowIcon,
     webPreferences: {
       preload: join(__dirname, '../preload/index.cjs'),
-      sandbox: true,
-      contextIsolation: true,
-      nodeIntegration: false,
-      nodeIntegrationInWorker: false,
-      webviewTag: false,
-      spellcheck: false
+      ...BROWSER_WINDOW_WEB_PREFERENCES
     }
   })
 
@@ -158,11 +159,7 @@ function createWindow(): void {
 }
 
 function applyContentSecurityPolicy(): void {
-  // In dev the Vite client needs inline styles and a websocket back to the
-  // dev server; the packaged app gets the strict policy.
-  const policy = isDev
-    ? "default-src 'self' 'unsafe-inline' data: blob: ws: http://localhost:*; script-src 'self' 'unsafe-inline' 'unsafe-eval' http://localhost:*"
-    : "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+  const policy = contentSecurityPolicy(isDev)
 
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
     callback({
@@ -177,15 +174,12 @@ function applyContentSecurityPolicy(): void {
 function hardenWebContents(): void {
   app.on('web-contents-created', (_event, contents) => {
     contents.setWindowOpenHandler(({ url }) => {
-      // External links open in the user's browser, never in an app window.
-      if (url.startsWith('https://')) void shell.openExternal(url)
+      if (isAllowedExternalUrl(url)) void shell.openExternal(url)
       return { action: 'deny' }
     })
 
     contents.on('will-navigate', (event, url) => {
-      const devUrl = process.env.ELECTRON_RENDERER_URL
-      const allowed = isDev && devUrl ? url.startsWith(devUrl) : url.startsWith('file://')
-      if (!allowed) {
+      if (!isAllowedNavigationUrl(url, isDev, process.env.ELECTRON_RENDERER_URL)) {
         event.preventDefault()
         logger.warn('navigation.blocked', { url })
       }

@@ -26,7 +26,14 @@ pnpm-debug.log*
 !.env.example
 
 # Local tool and editor state
+# .claude/ is committed on purpose (settings.json, agents, skills, hooks) so a
+# fresh clone inherits the same rules; only the machine-local overrides are not.
 .claude/settings.local.json
+.claude/hooks/.last-gate
+.agents/
+.snapshots/
+# Business Central AL symbol cache — unrelated to Elena, never belongs in a commit.
+.alpackages/
 .idea/
 .vscode/*
 !.vscode/extensions.json

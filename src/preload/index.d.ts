@@ -1,15 +1,12 @@
-import type { CommandName, CommandRequest, CommandResponse, EventName, EventPayload } from '@shared/ipc'
-import type { Result } from '@shared/types'
-
-export type WorkspacesApi = {
-  invoke<C extends CommandName>(channel: C, payload?: CommandRequest<C>): Promise<Result<CommandResponse<C>>>
-  subscribe<E extends EventName>(channel: E, listener: (payload: EventPayload<E>) => void): () => void
-  platform: string
-  /** Windows build number (eg. 26200), or null off Windows. */
-  windowsBuild: number | null
-  zoomIn(): number
-  zoomOut(): number
-}
+/**
+ * Renderer-side declaration of the bridge.
+ *
+ * The shape itself lives in `@shared/ipc` and is what `src/preload/index.ts`
+ * is checked against, so there is no second hand-written copy to drift. This
+ * file exists only to augment `Window`; `tsconfig.web.json` includes it but not
+ * `src/preload/index.ts`, which imports `electron`.
+ */
+import type { WorkspacesApi } from '@shared/ipc'
 
 declare global {
   interface Window {
@@ -17,4 +14,4 @@ declare global {
   }
 }
 
-export {}
+export type { WorkspacesApi }

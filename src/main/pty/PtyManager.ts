@@ -36,6 +36,32 @@ type Entry = {
 
 export type CreateResult = { ok: true; session: RuntimeSession } | { ok: false; error: AppError }
 
+export const TRUNCATION_MARKER = '\r\n[output truncated: terminal could not keep up]\r\n'
+
+/**
+ * Backpressure guard: a runaway process must not grow main-process memory
+ * without bound. Drops the oldest chunks and tells the user in-band.
+ *
+ * Exported and pure so `tests/pty-backpressure.test.ts` can prove the arithmetic
+ * at the real 4 MB cap without pushing 4 MB through ConPTY, which is slow and
+ * flaky on CI. Mutates `pending` in place and returns the new byte count.
+ */
+export function appendWithCap(
+  pending: string[],
+  pendingBytes: number,
+  chunk: string,
+  cap: number
+): number {
+  pending.push(chunk)
+  let bytes = pendingBytes + chunk.length
+  while (bytes > cap && pending.length > 1) {
+    const dropped = pending.shift()
+    bytes -= dropped?.length ?? 0
+    pending[0] = `${TRUNCATION_MARKER}${pending[0] ?? ''}`
+  }
+  return bytes
+}
+
 export class PtyManager {
   private readonly sessions = new Map<string, Entry>()
 
@@ -223,15 +249,7 @@ export class PtyManager {
   }
 
   private enqueue(entry: Entry, chunk: string): void {
-    entry.pending.push(chunk)
-    entry.pendingBytes += chunk.length
-    // Backpressure guard: a runaway process must not grow main-process memory
-    // without bound. Drop the oldest chunks and tell the user in-band.
-    while (entry.pendingBytes > MAX_PENDING_BYTES && entry.pending.length > 1) {
-      const dropped = entry.pending.shift()
-      entry.pendingBytes -= dropped?.length ?? 0
-      entry.pending[0] = `\r\n[output truncated: terminal could not keep up]\r\n${entry.pending[0] ?? ''}`
-    }
+    entry.pendingBytes = appendWithCap(entry.pending, entry.pendingBytes, chunk, MAX_PENDING_BYTES)
     if (entry.flushTimer) return
     entry.flushTimer = setTimeout(() => this.flush(entry), FLUSH_INTERVAL_MS)
   }

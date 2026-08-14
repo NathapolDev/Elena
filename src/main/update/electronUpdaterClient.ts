@@ -9,6 +9,10 @@ import type { UpdateClient } from './UpdateManager'
 // against app.asar/node_modules. Do not turn this back into `await import()`.
 const requireCjs = createRequire(import.meta.url)
 
+/* eslint-disable-next-line @typescript-eslint/require-await --
+   Deliberately async: it mirrors the shape callers already await, and leaves
+   room for the lazy load to become a real await without churning call sites.
+   See the note above about why this must not become `await import()`. */
 export async function createElectronUpdaterClient(): Promise<UpdateClient> {
   // electron-updater constructs its Electron adapter at load time, so it is
   // still loaded lazily — after app.whenReady() — rather than at module scope.

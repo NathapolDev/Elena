@@ -59,7 +59,11 @@ function titleForCode(code: AppError['code']): string {
       return 'Not found'
     case 'PERSISTENCE_FAILED':
       return 'Could not save'
-    default:
+    case 'INTERNAL':
       return 'Unexpected error'
   }
+  // Exhaustive on purpose: a new AppErrorCode without a title here is a compile
+  // error rather than a silent "Unexpected error". Do not re-add a `default:`.
+  const unhandled: never = code
+  return unhandled
 }
