@@ -12,5 +12,13 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  reporter: [['list']]
+  reporter: [['list']],
+  // CI uploads test-results/ as `e2e-failure-context`. Without these the
+  // artifact is nearly empty, so a red E2E step is undebuggable after the fact.
+  // Video stays off: Electron capture is unreliable and inflates the artifact.
+  use: {
+    trace: 'retain-on-failure',
+    screenshot: 'only-on-failure',
+    video: 'off'
+  }
 })

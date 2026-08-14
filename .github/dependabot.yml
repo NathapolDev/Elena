@@ -1,0 +1,23 @@
+version: 2
+
+# Elena spawns child processes and ships an auto-updater, so CVE notice on the
+# dependency tree is worth having. Minor and patch bumps are grouped into one PR
+# to keep the noise down; majors arrive separately on purpose — an Electron or
+# node-pty major needs attention, not a rubber stamp.
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2

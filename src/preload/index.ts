@@ -7,7 +7,14 @@
  */
 import { contextBridge, ipcRenderer, webFrame } from 'electron'
 import { COMMAND_CHANNELS, EVENT_CHANNELS } from '@shared/ipc'
-import type { CommandName, CommandRequest, CommandResponse, EventName, EventPayload } from '@shared/ipc'
+import type {
+  CommandName,
+  CommandRequest,
+  CommandResponse,
+  EventName,
+  EventPayload,
+  WorkspacesApi
+} from '@shared/ipc'
 import type { Result } from '@shared/types'
 
 const commandChannels = new Set<string>(COMMAND_CHANNELS)
@@ -60,8 +67,8 @@ const api = {
   windowsBuild: windowsBuildNumber(),
   zoomIn: (): number => adjustZoom(ZOOM_STEP),
   zoomOut: (): number => adjustZoom(-ZOOM_STEP)
-}
+} satisfies WorkspacesApi
 
-export type WorkspacesApi = typeof api
+export type { WorkspacesApi }
 
 contextBridge.exposeInMainWorld('elena', api)

@@ -5,7 +5,6 @@
 import { app, dialog } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { requestSchemas } from '@shared/schemas'
-import type { RuntimeSession } from '@shared/types'
 import { broadcast, fail, ok, registerCommand } from './bus'
 import { readGitBranch } from '../git/branch'
 import { discoverShells } from '../pty/shells'
@@ -149,7 +148,7 @@ export function registerIpcHandlers(deps: Deps): void {
   )
 
   registerCommand('terminal:list-sessions', requestSchemas['terminal:list-sessions'], () =>
-    ok(pty.listSessions() as RuntimeSession[])
+    ok(pty.listSessions())
   )
 
   /* ---------- presets ---------- */
