@@ -12,8 +12,10 @@
 
 ## Findings
 
-- No actionable P0, P1, or P2 mismatch remains.
-- The implementation preserves the source composition: project command bar, workspace/session navigator, four persistent panes, right-side inspector, grid pagination, and bottom session action bar.
+- Two P1 mismatches are open (Iteration 3): the right-side session inspector and the persistent bottom
+  session action bar are no longer mounted, though the reference still shows both.
+- The implementation preserves the rest of the source composition: project command bar, workspace/session
+  navigator, four persistent panes, and grid pagination.
 - The E2E fixture uses real PowerShell prompts and a temporary project path rather than the illustrative Codex/Claude transcript in the source. This is expected functional data, not design drift.
 
 ## Required fidelity surfaces
@@ -53,6 +55,36 @@ Post-fix evidence: `spatial-grid-qa.png` shows uncluttered pane headers and the 
 - Confirmed no actionable P0/P1/P2 visual or usability differences remain.
 - Electron smoke flow passed 14/14 scenarios, including workspace persistence, four-pane layout, session switching, theme continuity, restart, close confirmation, command palette, and relaunch.
 
+### Iteration 3 — blocked
+
+Triggered by the drag-to-move / detach-to-window work, which changes pane chrome. Recaptured at
+1488 × 1058 in the recorded state (dark theme, one workspace, four running PowerShell sessions, second
+focused) and reopened the source alongside it.
+
+Grid composition itself is unchanged and still matches: `buildSpatialGrid` was not touched, the balanced 2×2
+holds, `1–4` pagination is present, and the active pane keeps its cyan focus treatment. The new chrome —
+a six-dot drag grip at the head of each pane header, the drop-position overlay, the detached-pane
+placeholder — reads as part of the existing token set and introduces no new colour. The grip is the one
+addition the reference does not have; it costs ~15px of header width and is what makes the drag gesture
+discoverable, so it is a deliberate divergence rather than drift.
+
+Two surfaces the record requires can no longer be reproduced, and both predate this change:
+
+- [P1] The **Session Inspector** the reference shows down the right edge (Preset, PID, relative cwd, Elapsed,
+  Exit code, plus Restart/Stop/Close) is not mounted. `src/renderer/src/components/SessionInspector.tsx`
+  still exists but nothing imports it.
+- [P1] The **persistent bottom session action bar** (Focus session, Split, Stop, Restart, Close, More
+  actions) added in Iteration 1 is gone, along with the "All systems operational" status line.
+
+Both disappeared in `580bee6` ("feat: enhance terminal workspace interactions"), so the "Iteration 2 —
+passed" verdict above has been stale since that commit rather than being regressed by this work. Whether to
+restore them or to retire them from the reference is a product decision, not a QA one — recording rather
+than resolving it here.
+
+The remaining three surfaces (typography, spacing rhythm, colour tokens) were compared and show no
+actionable mismatch. Real PowerShell prompts and a temp project path instead of the illustrative transcript
+remain expected fixture data.
+
 ## Open questions
 
 - None blocking. Workspace diversity and rich terminal transcripts are runtime data rather than static UI fixtures.
@@ -70,4 +102,5 @@ Post-fix evidence: `spatial-grid-qa.png` shows uncluttered pane headers and the 
 
 - [P3] Consider adding representative agent transcript fixtures for future visual-regression snapshots so content density can be compared independently from live PTY behavior.
 
-final result: passed
+final result: blocked (Iteration 3) — grid composition passes; the inspector and bottom action bar the
+reference requires are absent since `580bee6`.

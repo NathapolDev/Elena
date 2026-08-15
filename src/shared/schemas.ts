@@ -129,6 +129,7 @@ export const requestSchemas = {
     name: z.string().min(1).max(120),
     projectRoot: z.string().min(1).max(1024)
   }),
+  'workspace:ensure-scratch': z.void().or(z.undefined()),
   'workspace:update': z.object({
     id: z.string().min(1),
     patch: z.object({
@@ -139,6 +140,14 @@ export const requestSchemas = {
     })
   }),
   'workspace:delete': z.object({ id: z.string().min(1) }),
+
+  'window:detach': z.object({
+    workspaceId: z.string().min(1),
+    terminalId: z.string().min(1),
+    title: z.string().min(1).max(120)
+  }),
+  'window:reattach': z.object({ terminalId: z.string().min(1) }),
+  'window:detached': z.void().or(z.undefined()),
 
   'terminal:create': z.object({
     workspaceId: z.string().min(1),

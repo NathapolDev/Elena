@@ -10,10 +10,12 @@ import { readGitBranch } from '../git/branch'
 import { discoverShells } from '../pty/shells'
 import { validateDirectory } from '../security/paths'
 import { applyThemePreference, resolvedTheme } from '../theme'
+import { closeDetachedWindowFor, detachTerminal, detachedTerminalIds, reattachTerminal } from '../windows'
 import { logger } from '../logger'
 import type { PtyManager } from '../pty/PtyManager'
 import type { PresetStore } from '../store/presetStore'
 import type { SettingsStore } from '../store/settingsStore'
+import { SCRATCH_WORKSPACE_ID } from '../store/workspaceStore'
 import type { WorkspaceStore } from '../store/workspaceStore'
 import type { UpdateManager } from '../update/UpdateManager'
 
@@ -69,9 +71,36 @@ export function registerIpcHandlers(deps: Deps): void {
     return ok(workspace)
   })
 
+  registerCommand('workspace:ensure-scratch', requestSchemas['workspace:ensure-scratch'], () => {
+    // The home directory is the widest folder a user always has, and it becomes
+    // this workspace's cwd jail like any other project root.
+    const check = validateDirectory(app.getPath('home'))
+    if (!check.ok) {
+      return fail('INVALID_CWD', `Home folder is not usable (${check.reason}).`, 'choose-directory')
+    }
+    const existing = workspaces.get(SCRATCH_WORKSPACE_ID)
+    const staleRoot = Boolean(existing) && !validateDirectory(existing!.projectRoot).ok
+    const workspace = workspaces.ensureScratch(check.path, staleRoot)
+    const existed = Boolean(existing)
+    if (!existed) {
+      logger.info('workspace.scratch-created', { id: workspace.id })
+      broadcast('workspace:changed', { workspaceId: workspace.id })
+    }
+    return ok(workspace)
+  })
+
   registerCommand('workspace:update', requestSchemas['workspace:update'], ({ id, patch }) => {
+    const before = workspaces.get(id)
     const updated = workspaces.update(id, patch)
     if (!updated) return fail('NOT_FOUND', 'Workspace not found.')
+    // A terminal that has just been closed must not leave a window rendering a
+    // configuration that no longer exists.
+    if (before && patch.terminals) {
+      const survivors = new Set(updated.terminals.map((terminal) => terminal.id))
+      for (const terminal of before.terminals) {
+        if (!survivors.has(terminal.id)) closeDetachedWindowFor(terminal.id)
+      }
+    }
     broadcast('workspace:changed', { workspaceId: id })
     return ok(updated)
   })
@@ -82,13 +111,35 @@ export function registerIpcHandlers(deps: Deps): void {
 
     // Kill this workspace's sessions before dropping its configuration, so a
     // deleted workspace cannot leave a running child behind (NFR-08).
-    for (const terminal of workspace.terminals) pty.dispose(terminal.id)
+    for (const terminal of workspace.terminals) {
+      closeDetachedWindowFor(terminal.id)
+      pty.dispose(terminal.id)
+    }
     workspaces.delete(id)
     // FR-05: app configuration only — nothing under projectRoot is touched.
     logger.info('workspace.deleted', { id })
     broadcast('workspace:changed', { workspaceId: null })
     return ok({ id })
   })
+
+  /* ---------- windows ---------- */
+
+  registerCommand('window:detach', requestSchemas['window:detach'], ({ workspaceId, terminalId, title }) => {
+    const workspace = workspaces.get(workspaceId)
+    if (!workspace) return fail('NOT_FOUND', 'Workspace not found.')
+    if (!workspace.terminals.some((terminal) => terminal.id === terminalId)) {
+      return fail('NOT_FOUND', 'Terminal configuration not found.')
+    }
+    return ok({ terminalIds: detachTerminal(workspaceId, terminalId, title) })
+  })
+
+  registerCommand('window:reattach', requestSchemas['window:reattach'], ({ terminalId }) =>
+    ok({ terminalIds: reattachTerminal(terminalId) })
+  )
+
+  registerCommand('window:detached', requestSchemas['window:detached'], () =>
+    ok({ terminalIds: detachedTerminalIds() })
+  )
 
   /* ---------- terminals ---------- */
 

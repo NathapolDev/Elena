@@ -15,6 +15,10 @@ import { logger } from '../logger'
 
 const SAVE_DEBOUNCE_MS = 400 // FR-03: no more than 1s
 
+/** Not a uuid on purpose — a stable id is what makes `ensureScratch` idempotent. */
+export const SCRATCH_WORKSPACE_ID = 'elena.scratch'
+export const SCRATCH_WORKSPACE_NAME = 'Quick Session'
+
 type WorkspaceFile = {
   schemaVersion: number
   workspaces: Workspace[]
@@ -73,6 +77,40 @@ export class WorkspaceStore {
     const now = new Date().toISOString()
     const workspace: Workspace = {
       id: randomUUID(),
+      name,
+      projectRoot,
+      layout: null,
+      terminals: [],
+      createdAt: now,
+      updatedAt: now
+    }
+    this.file.workspaces.push(workspace)
+    this.scheduleSave()
+    return clone(workspace)
+  }
+
+  /**
+   * The workspace Quick Session drops into. Identified by a fixed id rather
+   * than a persisted flag, so recognising it costs no schema change and
+   * repeated calls can never produce a second one.
+   */
+  ensureScratch(projectRoot: string, repairRoot = false, name = SCRATCH_WORKSPACE_NAME): Workspace {
+    const existing = this.file.workspaces.find((w) => w.id === SCRATCH_WORKSPACE_ID)
+    if (existing) {
+      // The caller has found the persisted root unusable — a moved profile, a
+      // mapped drive that is gone. Returning it would hand the renderer a cwd
+      // that only fails later at spawn time.
+      if (repairRoot && existing.projectRoot !== projectRoot) {
+        existing.projectRoot = projectRoot
+        existing.updatedAt = new Date().toISOString()
+        this.scheduleSave()
+      }
+      return clone(existing)
+    }
+
+    const now = new Date().toISOString()
+    const workspace: Workspace = {
+      id: SCRATCH_WORKSPACE_ID,
       name,
       projectRoot,
       layout: null,

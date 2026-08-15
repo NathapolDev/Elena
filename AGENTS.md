@@ -68,6 +68,16 @@ remount on split/zoom/StrictMode); output is batched on a 16 ms flush with a 4 M
 `\x03` then force-kills after 2 s; a stale `onExit` from a restarted id is dropped; `disposeAll()` runs on `before-quit`
 and on renderer navigation so no child ever outlives the app.
 
+**Windows (`src/main/windows.ts`)** owns every `BrowserWindow`: one main window plus a map of *detached*
+windows, each rendering a single terminal pulled out of the main layout. Detaching moves UI only — `PtyManager`
+is app-wide and keyed by terminal id, so the child process never notices. Detached state is in-memory in main
+and mirrored to renderers through `window:detached-changed`; it is deliberately not persisted, so a relaunch
+always starts with every terminal in the main window. A detached window gets the identical
+`BROWSER_WINDOW_WEB_PREFERENCES` and must be passed to `trustWebContents`, or every IPC call from it is
+rejected. Its role arrives as query parameters on the loaded URL (`role`, `workspaceId`, `terminalId`), which
+`App.tsx` reads once at module scope. Note `broadcast` reaches *all* trusted windows, so each window filters
+`terminal:data` down to what it actually renders.
+
 **Preload (`src/preload/index.ts`)** exposes exactly `invoke`, `subscribe`, `platform` on `window.elena`. No
 generic `send`/`on`. Sandboxed, so it is built as CJS (`index.cjs`) — see the comment in `electron.vite.config.ts`.
 
@@ -99,7 +109,11 @@ a layout can never reference a missing terminal.
 ## Conventions that are load-bearing
 
 - **Restored sessions are configuration, not processes.** A relaunched terminal shows *Not started* until the user
-  starts it; `RuntimeSession` is never persisted. Do not add auto-restart.
+  starts it; `RuntimeSession` is never persisted. Do not add auto-restart. Detached-window placement follows the
+  same rule and is never written to disk.
+- **Detaching does not edit the layout.** The leaf stays in the tree and renders `DetachedPanePlaceholder`, so
+  the persisted workspace is untouched and reattaching is exact. Removing the leaf instead would race the
+  `pruneLayout` that `workspace:update` runs on every patch.
 - **No shell string composition.** Spawn is always executable + argv array. `security/paths.ts` resolves the executable
   itself (PATH + PATHEXT) so a missing binary raises `EXECUTABLE_NOT_FOUND` instead of an opaque spawn failure.
 - **Env is an allowlist of names only.** Presets store variable *names*; values are read from the live OS environment
@@ -144,7 +158,13 @@ the rule is the only thing standing between you and the bug.
    Subscribing per pane is a fan-out bug, not a style preference. Also counted by `tests/renderer-invariants.test.ts`.
 8. **`app:error` is a declared-but-dead channel.** `App.tsx` subscribes to it but nothing in `src/main` broadcasts it.
    Don't assume it works — either wire a `broadcast`, or return a `Result` failure instead.
-9. **`readTerminalTheme` must resolve every slot from tokens.** xterm cannot read CSS variables, so a missing ANSI
+9. **`workspace:update` patches are wholesale, so every window must stay subscribed to `workspace:changed`.**
+   `renameTerminal` and `closeTerminal` send the entire `terminals` array built from that window's own copy.
+   With a second window open, a stale copy silently deletes terminals it never knew about — the config
+   vanishes from `workspaces.json`, `pruneLayout` drops its leaf, and its PTY keeps running with nothing
+   owning it. `App.tsx` answers the event by re-reading the list. Do not remove that subscription, and do not
+   assume the renderer is the only writer.
+10. **`readTerminalTheme` must resolve every slot from tokens.** xterm cannot read CSS variables, so a missing ANSI
    slot silently falls back to xterm's own dark-tuned palette and only shows up as a wrong colour in one theme.
    `tests/theme-tokens.test.ts` asserts light/dark parity and that every slot the registry reads is declared in both.
 

@@ -6,11 +6,13 @@ import { useCallback, useRef } from 'react'
 import type { LayoutNode, TerminalConfig } from '@shared/types'
 import { clampRatio, collectTerminalIds } from '@shared/layout'
 import { TerminalPane } from './TerminalPane'
+import { DetachedPanePlaceholder } from './DetachedPanePlaceholder'
 
 type Props = {
   node: LayoutNode
   terminals: TerminalConfig[]
   activeTerminalId: string | null
+  detachedTerminalIds: string[]
   path?: number[]
   onRatioChange: (path: number[], ratio: number) => void
   onActivateTab: (tabId: string) => void
@@ -20,6 +22,7 @@ export function SplitView({
   node,
   terminals,
   activeTerminalId,
+  detachedTerminalIds,
   path = [],
   onRatioChange,
   onActivateTab
@@ -56,6 +59,11 @@ export function SplitView({
   if (node.type === 'terminal') {
     const config = terminals.find((t) => t.id === node.terminalId)
     if (!config) return null
+    // The leaf stays in the tree while the terminal lives in its own window, so
+    // detaching never touches the persisted layout and reattaching is exact.
+    if (detachedTerminalIds.includes(node.terminalId)) {
+      return <DetachedPanePlaceholder config={config} />
+    }
     return <TerminalPane config={config} isActive={activeTerminalId === node.terminalId} />
   }
 
@@ -91,6 +99,7 @@ export function SplitView({
             node={active.layout}
             terminals={terminals}
             activeTerminalId={activeTerminalId}
+            detachedTerminalIds={detachedTerminalIds}
             path={[...path, activeIndex]}
             onRatioChange={onRatioChange}
             onActivateTab={onActivateTab}
@@ -113,6 +122,7 @@ export function SplitView({
           node={node.children[0]}
           terminals={terminals}
           activeTerminalId={activeTerminalId}
+          detachedTerminalIds={detachedTerminalIds}
           path={[...path, 0]}
           onRatioChange={onRatioChange}
           onActivateTab={onActivateTab}
@@ -147,6 +157,7 @@ export function SplitView({
           node={node.children[1]}
           terminals={terminals}
           activeTerminalId={activeTerminalId}
+          detachedTerminalIds={detachedTerminalIds}
           path={[...path, 1]}
           onRatioChange={onRatioChange}
           onActivateTab={onActivateTab}
