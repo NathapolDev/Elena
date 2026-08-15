@@ -222,14 +222,30 @@ test('the search shortcut does not steal focus out of an open dialog', async () 
 })
 
 test('detaching opens a real second window and reattaching restores the pane', async () => {
-  const detachedTitle = (await page.locator('.pane__title').allInnerTexts())[0]!
   const paneCount = await page.locator('.pane').count()
-  // Whatever this session's status is, it must survive the handover unchanged.
-  // Do not assert "Running": the agent preset's executable is not installed on
-  // a clean CI runner, so there the session is legitimately in an error state.
-  const statusBefore = await page.locator('.pane').first().locator('.badge').first().innerText()
 
-  await page.locator('.pane').first().getByRole('button', { name: 'Open in new window' }).click()
+  // Detach a pane that is genuinely running. The Quick Session panes launch an
+  // agent CLI, which a clean CI runner does not have — there they sit in an
+  // error state, and "the process kept running" cannot be shown with one.
+  let index = -1
+  for (let i = 0; i < paneCount; i += 1) {
+    if ((await page.locator('.pane').nth(i).locator('.badge').first().innerText()) === 'Running') {
+      index = i
+      break
+    }
+  }
+  expect(index, 'no running pane to detach').toBeGreaterThanOrEqual(0)
+
+  const source = page.locator('.pane').nth(index)
+  // A unique title makes "it came back to the same slot" checkable, since
+  // several panes share the default shell name.
+  await source.locator('.pane__title').dblclick()
+  await page.getByLabel('Terminal name').fill('Detach Me')
+  await page.getByRole('button', { name: 'Save name' }).click()
+  const detachedTitle = 'Detach Me'
+  await expect(source.locator('.pane__title')).toHaveText(detachedTitle)
+
+  await source.getByRole('button', { name: 'Open in new window' }).click()
 
   await expect.poll(() => app.windows().length).toBe(2)
   const detachedPage = app.windows().find((w) => w !== page)!
@@ -253,16 +269,17 @@ test('detaching opens a real second window and reattaching restores the pane', a
   // The slot is kept, not removed: the total is unchanged.
   await expect(page.locator('.pane')).toHaveCount(paneCount)
 
-  // The PTY never moved: the session carries the same status into the new
-  // window rather than being restarted there.
-  await expect(detachedPage.locator('.pane').locator('.badge').first()).toHaveText(statusBefore)
+  // The PTY never moved: it is still running, in the new window.
+  await expect(detachedPage.locator('.pane').locator('.badge').first()).toHaveText('Running')
 
   await page.getByRole('button', { name: 'Bring back' }).click()
   await expect.poll(() => app.windows().length).toBe(1)
   await expect(page.locator('.pane--detached')).toHaveCount(0)
   await expect(page.locator('.pane')).toHaveCount(paneCount)
-  // Reattaching is exact: the terminal is back in the slot it left.
-  await expect(page.locator('.pane__title').first()).toHaveText(detachedTitle)
+  // Reattaching is exact: the terminal is back in the slot it left, not
+  // appended somewhere new.
+  await expect(page.locator('.pane').nth(index).locator('.pane__title')).toHaveText(detachedTitle)
+  await expect(page.locator('.pane').nth(index).locator('.badge').first()).toHaveText('Running')
 })
 
 test('closing a detached window reattaches instead of stranding it', async () => {
