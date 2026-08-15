@@ -302,11 +302,16 @@ export function App(): React.JSX.Element {
     (event: KeyboardEvent): void => {
       // Unmodified keys must not be stolen from a text field the user is
       // typing into — this handler runs in capture phase on the whole window.
+      // xterm receives keystrokes through a hidden textarea, so a focused
+      // terminal looks exactly like a focused form field; excluding it is what
+      // keeps F2 working in the case it exists for (FR-21).
       const target = event.target
+      const inTerminal = target instanceof HTMLElement && target.closest('.pane__terminal') !== null
       const typing =
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        (target instanceof HTMLElement && target.isContentEditable)
+        !inTerminal &&
+        (target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement ||
+          (target instanceof HTMLElement && target.isContentEditable))
 
       // F2 is the platform convention for rename and takes no modifier, so it
       // is handled before the Ctrl gate below.
