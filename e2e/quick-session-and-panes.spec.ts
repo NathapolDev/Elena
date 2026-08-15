@@ -224,6 +224,10 @@ test('the search shortcut does not steal focus out of an open dialog', async () 
 test('detaching opens a real second window and reattaching restores the pane', async () => {
   const detachedTitle = (await page.locator('.pane__title').allInnerTexts())[0]!
   const paneCount = await page.locator('.pane').count()
+  // Whatever this session's status is, it must survive the handover unchanged.
+  // Do not assert "Running": the agent preset's executable is not installed on
+  // a clean CI runner, so there the session is legitimately in an error state.
+  const statusBefore = await page.locator('.pane').first().locator('.badge').first().innerText()
 
   await page.locator('.pane').first().getByRole('button', { name: 'Open in new window' }).click()
 
@@ -249,8 +253,9 @@ test('detaching opens a real second window and reattaching restores the pane', a
   // The slot is kept, not removed: the total is unchanged.
   await expect(page.locator('.pane')).toHaveCount(paneCount)
 
-  // The PTY never moved: it is still running on both sides of the handover.
-  await expect(detachedPage.locator('.pane').getByText(/Running/)).toBeVisible()
+  // The PTY never moved: the session carries the same status into the new
+  // window rather than being restarted there.
+  await expect(detachedPage.locator('.pane').locator('.badge').first()).toHaveText(statusBefore)
 
   await page.getByRole('button', { name: 'Bring back' }).click()
   await expect.poll(() => app.windows().length).toBe(1)
