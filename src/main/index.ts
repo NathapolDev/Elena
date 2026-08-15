@@ -7,17 +7,17 @@
  *  - navigation and window creation blocked outside an explicit allowlist
  */
 import { app, BrowserWindow, Menu, shell, session } from 'electron'
-import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { broadcast, trustWebContents } from './ipc/bus'
+import { broadcast } from './ipc/bus'
 import { registerIpcHandlers } from './ipc/register'
 import { PtyManager } from './pty/PtyManager'
+import { contentSecurityPolicy, isAllowedExternalUrl, isAllowedNavigationUrl } from './security/posture'
 import {
-  BROWSER_WINDOW_WEB_PREFERENCES,
-  contentSecurityPolicy,
-  isAllowedExternalUrl,
-  isAllowedNavigationUrl
-} from './security/posture'
+  closeAllDetachedWindows,
+  configureWindows,
+  createMainWindow,
+  getMainWindow
+} from './windows'
 import { PresetStore } from './store/presetStore'
 import { SettingsStore } from './store/settingsStore'
 import { WorkspaceStore } from './store/workspaceStore'
@@ -30,7 +30,6 @@ import { createDisabledUpdaterClient, createElectronUpdaterClient } from './upda
 const __dirname = fileURLToPath(new URL('.', import.meta.url))
 const isDev = !app.isPackaged
 
-let mainWindow: BrowserWindow | null = null
 let quitting = false
 
 const workspaces = new WorkspaceStore()
@@ -54,9 +53,10 @@ if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
   app.on('second-instance', () => {
-    if (!mainWindow) return
-    if (mainWindow.isMinimized()) mainWindow.restore()
-    mainWindow.focus()
+    const window = getMainWindow()
+    if (!window) return
+    if (window.isMinimized()) window.restore()
+    window.focus()
   })
   void bootstrap()
 }
@@ -80,82 +80,40 @@ async function bootstrap(): Promise<void> {
 
   applyContentSecurityPolicy()
   hardenWebContents()
-  registerIpcHandlers({ workspaces, settings, presets, pty, updates, getWindow: () => mainWindow })
+  registerIpcHandlers({ workspaces, settings, presets, pty, updates, getWindow: getMainWindow })
 
   onSystemThemeChanged((theme) => broadcast('theme:changed', { resolvedTheme: theme }))
 
+  configureWindows({
+    isDev,
+    dirname: __dirname,
+    devServerUrl: process.env.ELECTRON_RENDERER_URL,
+    backgroundColor: () => (resolvedTheme() === 'dark' ? '#282C34' : '#F5F7FA'),
+    onMainNavigated: () => {
+      if (pty.runningCount() > 0) {
+        logger.info('renderer.navigation-terminating-sessions', { count: pty.runningCount() })
+        pty.disposeAll()
+      }
+      // Those sessions are gone, so no detached window still has a UI to own.
+      closeAllDetachedWindows()
+    },
+    onMainClosed: (event) => {
+      if (quitting) return
+      // Graceful shutdown of children happens in before-quit; here we only make
+      // sure the window does not vanish before that ran.
+      quitting = true
+      event.preventDefault()
+      app.quit()
+    }
+  })
+
   Menu.setApplicationMenu(null)
-  createWindow()
+  createMainWindow()
   void updates.check()
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
   })
-}
-
-function createWindow(): void {
-  const windowIcon = isDev
-    ? join(process.cwd(), 'src/renderer/public/elena.png')
-    : join(__dirname, '../renderer/elena.png')
-
-  mainWindow = new BrowserWindow({
-    width: 1440,
-    height: 1024,
-    minWidth: 1180, // Shared UI specification: minimum window size
-    minHeight: 720,
-    show: false,
-    autoHideMenuBar: true,
-    backgroundColor: resolvedTheme() === 'dark' ? '#282C34' : '#F5F7FA',
-    title: 'Elena',
-    icon: windowIcon,
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.cjs'),
-      ...BROWSER_WINDOW_WEB_PREFERENCES
-    }
-  })
-
-  trustWebContents(mainWindow.webContents)
-
-  if (isDev) {
-    // Renderer errors are otherwise only visible in DevTools; surface them in
-    // the dev terminal. Never written to the log file (NFR-09).
-    mainWindow.webContents.on('console-message', (details) => {
-      console.log(`[renderer:${details.level}] ${details.message}`)
-    })
-  }
-
-  mainWindow.once('ready-to-show', () => mainWindow?.show())
-
-  // Renderer reload policy (Open decision, MVP answer): terminate sessions.
-  // A reattach buffer would keep children alive with no UI owning them, which is
-  // exactly the hidden-orphan case NFR-08 forbids.
-  mainWindow.webContents.on('did-start-navigation', (event) => {
-    if (event.isSameDocument || !event.isMainFrame) return
-    if (pty.runningCount() > 0) {
-      logger.info('renderer.navigation-terminating-sessions', { count: pty.runningCount() })
-      pty.disposeAll()
-    }
-  })
-
-  mainWindow.on('close', (event) => {
-    if (quitting) return
-    // Graceful shutdown of children happens in before-quit; here we only make
-    // sure the window does not vanish before that ran.
-    quitting = true
-    event.preventDefault()
-    app.quit()
-  })
-
-  mainWindow.on('closed', () => {
-    mainWindow = null
-  })
-
-  const devUrl = process.env.ELECTRON_RENDERER_URL
-  if (isDev && devUrl) {
-    void mainWindow.loadURL(devUrl)
-  } else {
-    void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
 }
 
 function applyContentSecurityPolicy(): void {
@@ -191,6 +149,7 @@ function hardenWebContents(): void {
 
 app.on('before-quit', () => {
   quitting = true
+  closeAllDetachedWindows()
   // NFR-08: every child dies with the app.
   pty.disposeAll()
   try {

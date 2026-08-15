@@ -2,22 +2,29 @@
  * Workspaces and sessions rail.
  *
  * Every workspace is listed at once — selecting one is a click on a visible
- * row, not a dropdown that hides the rest. The rail is resizable by dragging
+ * row, not a dropdown that hides the rest. The search field narrows that list
+ * only while the user is actively typing a query; an empty query always shows
+ * everything. The rail is resizable by dragging
  * (or arrow-keying) its right edge and can be hidden entirely; both are chrome
  * preferences owned by App and persisted in `uiPrefs`.
  */
-import { useCallback } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import { CaretLeftIcon } from '@phosphor-icons/react/CaretLeft'
 import { CircleIcon } from '@phosphor-icons/react/Circle'
 import { FolderIcon } from '@phosphor-icons/react/Folder'
+import { MagnifyingGlassIcon } from '@phosphor-icons/react/MagnifyingGlass'
 import { PencilSimpleIcon } from '@phosphor-icons/react/PencilSimple'
 import { PlusIcon } from '@phosphor-icons/react/Plus'
 import { TrashIcon } from '@phosphor-icons/react/Trash'
+import { XIcon } from '@phosphor-icons/react/X'
 import { collectTerminalIds } from '@shared/layout'
 import { useStore } from '../state/store'
 import { StatusBadge } from './StatusBadge'
 import { SIDEBAR_DEFAULT_WIDTH, SIDEBAR_MAX_WIDTH, SIDEBAR_MIN_WIDTH, clampSidebarWidth } from '../lib/uiPrefs'
 import type { Workspace } from '@shared/types'
+
+/** Shared with App so the focus shortcut does not need a ref through props. */
+export const WORKSPACE_SEARCH_INPUT_ID = 'workspace-search'
 
 type Props = {
   workspace: Workspace | undefined
@@ -49,6 +56,18 @@ export function Sidebar({
   const focusTerminal = useStore((s) => s.focusTerminal)
   const toggleZoom = useStore((s) => s.toggleZoom)
   const activateTab = useStore((s) => s.activateTab)
+
+  // Purely ephemeral: the query narrows what the rail draws and never reaches
+  // `workspace:update`, so nothing about it round-trips to disk.
+  const [query, setQuery] = useState('')
+  const needle = query.trim().toLowerCase()
+  const visibleWorkspaces = useMemo(() => {
+    if (!needle) return workspaces
+    return workspaces.filter(
+      (item) =>
+        item.name.toLowerCase().includes(needle) || item.projectRoot.toLowerCase().includes(needle)
+    )
+  }, [workspaces, needle])
 
   const layout = workspace?.layout ?? null
   const gridPages =
@@ -123,9 +142,58 @@ export function Sidebar({
           </button>
         </div>
 
+        {/*
+          The accessible name is deliberately free of the word "name": it is how
+          screen readers and tests address the field, and "search by name…"
+          collides with the "Name" input in the workspace dialogs.
+        */}
+        <div className="sidebar__search">
+          <MagnifyingGlassIcon className="sidebar__search-icon" size={15} aria-hidden="true" />
+          <input
+            id={WORKSPACE_SEARCH_INPUT_ID}
+            type="text"
+            value={query}
+            placeholder="Search workspaces"
+            aria-label="Search workspaces"
+            title="Search workspaces by title or project folder"
+            autoComplete="off"
+            spellCheck={false}
+            onChange={(event) => setQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && query) {
+                // Swallow it so a stray Escape clears the field instead of
+                // travelling on to whatever else listens globally.
+                event.preventDefault()
+                event.stopPropagation()
+                setQuery('')
+              }
+            }}
+          />
+          {query && (
+            <button
+              type="button"
+              className="icon-button sidebar__search-clear"
+              onClick={() => setQuery('')}
+              aria-label="Clear workspace search"
+              title="Clear search"
+            >
+              <XIcon size={14} />
+            </button>
+          )}
+        </div>
+
+        {needle && (
+          <p className="sidebar__search-count" role="status">
+            {visibleWorkspaces.length} of {workspaces.length} workspaces
+          </p>
+        )}
+
         <ul className="sidebar__scroll" aria-labelledby="workspace-list-label">
           {workspaces.length === 0 && <li className="sidebar__empty">No workspaces yet.</li>}
-          {workspaces.map((item) => {
+          {workspaces.length > 0 && visibleWorkspaces.length === 0 && (
+            <li className="sidebar__empty">No workspace matches “{query.trim()}”.</li>
+          )}
+          {visibleWorkspaces.map((item) => {
             const ids = collectTerminalIds(item.layout)
             const running = ids.filter((id) => sessions[id]?.status === 'running').length
             const hasNewOutput = ids.some((id) => unread[id])

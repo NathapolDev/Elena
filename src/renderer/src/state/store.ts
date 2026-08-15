@@ -11,10 +11,12 @@ import {
   appendTerminal,
   buildSpatialGrid,
   collectTerminalIds,
+  moveTerminal,
   removeTerminal,
   setRatio,
   splitTerminal
 } from '@shared/layout'
+import type { DropPosition } from '@shared/layout'
 import { DEFAULT_TERMINAL_FONT_SIZE, DEFAULT_TERMINAL_LINE_HEIGHT } from '@shared/terminalTypography'
 import type {
   AgentPreset,
@@ -29,7 +31,7 @@ import type {
 } from '@shared/types'
 import { call, describeError } from '../lib/api'
 import { clearTerminalBacklog } from '../lib/terminalBus'
-import { releaseTerminal } from '../lib/terminalRegistry'
+import { getTerminal, releaseTerminal } from '../lib/terminalRegistry'
 
 export type Toast = {
   id: string
@@ -60,19 +62,26 @@ type State = {
   pendingCloseTerminalId: string | null
   sessions: Record<string, RuntimeSession>
   unread: Record<string, boolean>
+  /**
+   * Terminals currently shown in their own window. Owned by the main process
+   * and mirrored here; like `sessions` it never round-trips to disk, so a
+   * relaunch always starts with everything in the main window.
+   */
+  detachedTerminalIds: string[]
   presets: AgentPreset[]
   shells: ShellInfo[]
   settings: AppSettings
   resolvedTheme: ResolvedTheme
   toasts: Toast[]
 
-  bootstrap: () => Promise<void>
+  bootstrap: (preferredWorkspaceId?: string) => Promise<void>
   refreshWorkspaces: () => Promise<void>
   createWorkspace: (name: string, projectRoot: string) => Promise<Workspace | null>
   renameWorkspace: (id: string, name: string) => Promise<boolean>
   deleteWorkspace: (id: string) => Promise<void>
   selectWorkspace: (id: string) => void
 
+  startQuickSession: (presetId: string) => Promise<void>
   addTerminal: (request: NewTerminalRequest) => Promise<void>
   renameTerminal: (terminalId: string, title: string) => Promise<boolean>
   startTerminal: (terminalId: string, cols: number, rows: number) => Promise<void>
@@ -87,6 +96,11 @@ type State = {
   cycleTerminal: (direction: 1 | -1) => void
   activateTab: (tabId: string) => void
   arrangeSpatialGrid: () => Promise<void>
+  moveTerminalTo: (sourceId: string, targetId: string, position: DropPosition) => Promise<void>
+  swapWithNeighbour: (direction: 1 | -1) => Promise<void>
+  detachTerminal: (terminalId: string) => Promise<void>
+  reattachTerminal: (terminalId: string) => Promise<void>
+  setDetachedTerminalIds: (terminalIds: string[], ownTerminalId?: string | null) => void
   updateRatio: (path: number[], ratio: number) => void
 
   applyStatus: (terminalId: string, status: SessionStatus, pid?: number) => void
@@ -125,22 +139,26 @@ export const useStore = create<State>((set, get) => ({
   pendingCloseTerminalId: null,
   sessions: {},
   unread: {},
+  detachedTerminalIds: [],
   presets: [],
   shells: [],
   settings: DEFAULT_SETTINGS,
   resolvedTheme: 'dark',
   toasts: [],
 
-  async bootstrap() {
+  async bootstrap(preferredWorkspaceId) {
     try {
-      const [workspaces, presets, shells, settingsResult, sessions] = await Promise.all([
+      const [workspaces, presets, shells, settingsResult, sessions, detached] = await Promise.all([
         call('workspace:list'),
         call('preset:list'),
         call('shell:list'),
         call('settings:get'),
-        call('terminal:list-sessions')
+        call('terminal:list-sessions'),
+        call('window:detached')
       ])
-      const first = workspaces[0]
+      // A detached window is told which workspace it belongs to; the main
+      // window has no preference and opens the first one.
+      const first = (preferredWorkspaceId && workspaces.find((w) => w.id === preferredWorkspaceId)) || workspaces[0]
       set({
         ready: true,
         workspaces,
@@ -149,6 +167,7 @@ export const useStore = create<State>((set, get) => ({
         settings: settingsResult.settings,
         resolvedTheme: settingsResult.resolvedTheme,
         sessions: Object.fromEntries(sessions.map((s) => [s.terminalId, s])),
+        detachedTerminalIds: detached.terminalIds,
         activeWorkspaceId: first?.id ?? null,
         activeTerminalId: first?.activeTerminalId ?? collectTerminalIds(first?.layout ?? null)[0] ?? null
       })
@@ -219,6 +238,51 @@ export const useStore = create<State>((set, get) => ({
       zoomedTerminalId: null,
       activeTerminalId: workspace?.activeTerminalId ?? collectTerminalIds(workspace?.layout ?? null)[0] ?? null
     })
+  },
+
+  /**
+   * Starts an agent session without the user preparing a workspace first.
+   * Every PTY still needs one for its cwd jail, so the main process hands back
+   * a scratch workspace on the home directory and the normal add/start path
+   * takes over from there.
+   */
+  async startQuickSession(presetId) {
+    const preset = get().presets.find((item) => item.id === presetId)
+    if (!preset) {
+      get().pushToast({ title: 'Preset not found', body: 'That agent preset no longer exists.', tone: 'error' })
+      return
+    }
+    if (!preset.executable) {
+      get().pushToast({
+        title: `${preset.name} is not configured`,
+        body: preset.installHint ?? 'Set an executable for this preset in Settings → Presets.',
+        tone: 'error'
+      })
+      return
+    }
+
+    try {
+      const workspace = await call('workspace:ensure-scratch')
+      set((state) => ({
+        workspaces: state.workspaces.some((w) => w.id === workspace.id)
+          ? state.workspaces.map((w) => (w.id === workspace.id ? workspace : w))
+          : [...state.workspaces, workspace]
+      }))
+      get().selectWorkspace(workspace.id)
+      await get().addTerminal({
+        title: preset.name,
+        executable: preset.executable,
+        args: preset.args,
+        // `defaultCwd` is relative to a project root that a scratch workspace
+        // does not meaningfully have, so the root itself is the only safe cwd.
+        cwd: workspace.projectRoot,
+        envAllowlist: preset.envAllowlist,
+        presetId: preset.id,
+        spatialGrid: true
+      })
+    } catch (error) {
+      get().pushError(error)
+    }
   },
 
   async addTerminal(request) {
@@ -468,6 +532,81 @@ export const useStore = create<State>((set, get) => ({
     const terminalIds = workspace.terminals.map((terminal) => terminal.id)
     const layout = buildSpatialGrid(terminalIds, state.activeTerminalId ?? undefined)
     await persistWorkspace(set, get, workspace.id, { layout })
+  },
+
+  async moveTerminalTo(sourceId, targetId, position) {
+    const state = get()
+    const workspace = state.workspaces.find((w) => w.id === state.activeWorkspaceId)
+    if (!workspace) return
+    const layout = moveTerminal(workspace.layout, sourceId, targetId, position)
+    // `moveTerminal` returns the same reference for a no-op, so an inert drop
+    // costs no write.
+    if (layout === workspace.layout) return
+    // Only the tree changes: the terminal keeps its id, so its xterm instance
+    // and scrollback are re-parented by the next mount rather than rebuilt.
+    await persistWorkspace(set, get, workspace.id, { layout })
+    set({ activeTerminalId: sourceId })
+  },
+
+  /** The keyboard route to the same rearrangement the drag gesture performs. */
+  async swapWithNeighbour(direction) {
+    const state = get()
+    const workspace = state.workspaces.find((w) => w.id === state.activeWorkspaceId)
+    const ids = collectTerminalIds(workspace?.layout ?? null)
+    const current = state.activeTerminalId ? ids.indexOf(state.activeTerminalId) : -1
+    if (current === -1 || ids.length < 2) return
+    const neighbour = ids[(current + direction + ids.length) % ids.length]
+    if (!neighbour || neighbour === state.activeTerminalId) return
+    await get().moveTerminalTo(state.activeTerminalId!, neighbour, 'swap')
+  },
+
+  async detachTerminal(terminalId) {
+    const state = get()
+    const workspace = state.workspaces.find((w) => w.id === state.activeWorkspaceId)
+    const config = workspace?.terminals.find((terminal) => terminal.id === terminalId)
+    if (!workspace || !config) return
+    try {
+      // The layout is deliberately left alone: the pane stays in the tree and
+      // renders a placeholder, so nothing about the workspace file changes and
+      // closing the window puts the terminal straight back where it was.
+      const { terminalIds } = await call('window:detach', {
+        workspaceId: workspace.id,
+        terminalId,
+        title: config.title
+      })
+      set({ detachedTerminalIds: terminalIds })
+    } catch (error) {
+      get().pushError(error)
+    }
+  },
+
+  async reattachTerminal(terminalId) {
+    try {
+      const { terminalIds } = await call('window:reattach', { terminalId })
+      set({ detachedTerminalIds: terminalIds })
+    } catch (error) {
+      get().pushError(error)
+    }
+  },
+
+  setDetachedTerminalIds(terminalIds, ownTerminalId) {
+    // Output that arrived for a terminal this window no longer draws would sit
+    // in the bus backlog forever; drop it at the moment ownership changes.
+    // `ownTerminalId` is the terminal a detached window exists to show — its
+    // backlog is the output waiting for a pane that has not mounted yet, so
+    // clearing it here would throw away that window's first lines.
+    const returning = get().detachedTerminalIds.filter((id) => !terminalIds.includes(id))
+    for (const id of [...terminalIds, ...returning]) {
+      if (id !== ownTerminalId) clearTerminalBacklog(id)
+    }
+
+    // While a terminal was in another window this one received none of its
+    // output. Resuming the old buffer would splice two moments together with
+    // no seam, so the pane restarts from live output instead of lying about
+    // what it saw.
+    for (const id of returning) getTerminal(id)?.term.clear()
+
+    set({ detachedTerminalIds: terminalIds })
   },
 
   updateRatio(path, ratio) {

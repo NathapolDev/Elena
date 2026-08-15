@@ -3,6 +3,35 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Search workspaces from the sidebar by name or project folder. `Ctrl+Shift+F` focuses the field, `Escape`
+  clears it, and the list shows how many of the total match while a query is active.
+- Quick Session starts an agent without preparing a workspace first, from the empty state or the command
+  palette. Sessions land in a scratch workspace called *Quick Session* on your home folder, created once and
+  reused afterwards.
+- Move a pane by dragging its header onto another pane. Dropping on the middle swaps the two; dropping on an
+  edge re-splits along that axis. `Ctrl+Alt+Left`/`Right` swaps with the neighbouring pane from the keyboard.
+- Open a terminal in its own window from the pane header, and bring it back from the placeholder it leaves
+  behind. The process keeps running throughout — only the window drawing it changes — so the new window starts
+  its scrollback from that moment and says so. Which terminals are detached is never written to disk: every
+  relaunch starts with all of them in the main window.
+
+### Changed
+
+- The whole pane header is now the drag handle, marked with a grip, rather than the title alone.
+- The pane header's search button is replaced by *Open in new window*; searching the scrollback moved into the
+  pane's overflow menu.
+- A pane too narrow to show its icon row folds the row into a single menu button and hides the working
+  directory, branch, and elapsed time, so nothing overlaps and no action becomes unreachable.
+
+### Fixed
+
+- A narrow pane no longer draws its status badge on top of the action buttons.
+- `F2` no longer opens the rename dialog while you are typing in a text field.
+
 ## [0.3.0] - 2026-07-31
 
 ### Added

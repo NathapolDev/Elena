@@ -31,6 +31,13 @@ export type Commands = {
   'workspace:list': { req: void; res: Workspace[] }
   'workspace:get': { req: { id: string }; res: Workspace }
   'workspace:create': { req: { name: string; projectRoot: string }; res: Workspace }
+  /**
+   * Returns the scratch workspace, creating it on the home directory the first
+   * time. Idempotent: a fixed id means Quick Session never accumulates
+   * duplicates. Every PTY needs a workspace for its cwd jail, so this is how a
+   * session starts without the user preparing one (FR-01).
+   */
+  'workspace:ensure-scratch': { req: void; res: Workspace }
   'workspace:update': {
     req: {
       id: string
@@ -44,6 +51,15 @@ export type Commands = {
     res: Workspace
   }
   'workspace:delete': { req: { id: string }; res: { id: string } }
+
+  /**
+   * Opens a terminal in its own window. The PTY does not move — only the UI
+   * that renders it — so the response is just the new set of detached ids.
+   */
+  'window:detach': { req: { workspaceId: string; terminalId: string; title: string }; res: { terminalIds: string[] } }
+  'window:reattach': { req: { terminalId: string }; res: { terminalIds: string[] } }
+  /** Detached state is in-memory in main, so a fresh renderer has to ask. */
+  'window:detached': { req: void; res: { terminalIds: string[] } }
 
   'terminal:create': {
     req: { workspaceId: string; terminalId: string; cols: number; rows: number }
@@ -97,6 +113,8 @@ export type Events = {
     endedAt: string
   }
   'workspace:changed': { workspaceId: string | null }
+  /** The full set, not a delta, so a late-arriving window cannot miss one. */
+  'window:detached-changed': { terminalIds: string[] }
   'theme:changed': { resolvedTheme: ResolvedTheme }
   'app:error': AppError
   'app:update-state': UpdateState
@@ -120,8 +138,12 @@ export const COMMAND_CHANNELS = [
   'workspace:list',
   'workspace:get',
   'workspace:create',
+  'workspace:ensure-scratch',
   'workspace:update',
   'workspace:delete',
+  'window:detach',
+  'window:reattach',
+  'window:detached',
   'terminal:create',
   'terminal:write',
   'terminal:resize',
@@ -146,6 +168,7 @@ export const EVENT_CHANNELS = [
   'terminal:status-changed',
   'terminal:exit',
   'workspace:changed',
+  'window:detached-changed',
   'theme:changed',
   'app:error',
   'app:update-state'

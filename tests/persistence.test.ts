@@ -9,7 +9,7 @@ import { z } from 'zod'
 import { loadJsonFile, writeJsonFileAtomic } from '../src/main/store/atomicJson'
 import { PresetStore } from '../src/main/store/presetStore'
 import { SettingsStore } from '../src/main/store/settingsStore'
-import { WorkspaceStore } from '../src/main/store/workspaceStore'
+import { SCRATCH_WORKSPACE_ID, WorkspaceStore } from '../src/main/store/workspaceStore'
 
 let dir: string
 
@@ -245,6 +245,41 @@ describe('WorkspaceStore', () => {
     expect(existsSync(marker)).toBe(true)
     expect(readFileSync(marker, 'utf8')).toBe('keep me')
     expect(store.list()).toHaveLength(0)
+  })
+
+  it('ensureScratch is idempotent and keeps a stable id', () => {
+    const file = join(dir, 'workspaces.json')
+    const store = new WorkspaceStore(file)
+    store.load()
+
+    const first = store.ensureScratch(dir)
+    const second = store.ensureScratch(dir)
+    expect(second.id).toBe(first.id)
+    expect(first.id).toBe(SCRATCH_WORKSPACE_ID)
+    expect(store.list()).toHaveLength(1)
+
+    // The id has to survive a reload, or a relaunch would start a second one.
+    store.saveNow()
+    const reloaded = new WorkspaceStore(file)
+    reloaded.load()
+    expect(reloaded.ensureScratch(dir).id).toBe(SCRATCH_WORKSPACE_ID)
+    expect(reloaded.list()).toHaveLength(1)
+  })
+
+  it('ensureScratch never clobbers a scratch workspace that already has sessions', () => {
+    const file = join(dir, 'workspaces.json')
+    const store = new WorkspaceStore(file)
+    store.load()
+
+    const scratch = store.ensureScratch(dir)
+    store.update(scratch.id, {
+      terminals: [{ id: 't1', title: 'Claude Code', executable: 'pwsh.exe', args: [], cwd: dir, envAllowlist: [] }],
+      layout: { type: 'terminal', terminalId: 't1' }
+    })
+
+    const again = store.ensureScratch(dir)
+    expect(again.terminals).toHaveLength(1)
+    expect(again.layout).toEqual({ type: 'terminal', terminalId: 't1' })
   })
 
   it('recovers from a corrupt workspace file instead of failing to start', () => {

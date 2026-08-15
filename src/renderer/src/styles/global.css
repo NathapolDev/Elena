@@ -56,6 +56,15 @@ select {
   background: var(--bg);
 }
 
+/*
+ * A detached window has no command bar, so it must not reserve that row —
+ * otherwise its single pane is squeezed into the header's height and the
+ * terminal is a few pixels tall.
+ */
+.app--detached {
+  grid-template-rows: minmax(0, 1fr);
+}
+
 .app__body {
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
@@ -307,6 +316,42 @@ body.is-resizing * {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.sidebar__search {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  padding: 0 var(--space-3) var(--space-2);
+}
+
+.sidebar__search input {
+  width: 100%;
+  min-width: 0;
+  padding-left: calc(var(--space-3) + 15px);
+  padding-right: calc(var(--space-3) + 14px);
+  font-size: var(--font-size-sm);
+}
+
+.sidebar__search-icon {
+  position: absolute;
+  left: calc(var(--space-3) + var(--space-2));
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.sidebar__search-clear {
+  position: absolute;
+  right: calc(var(--space-3) + 2px);
+}
+
+.sidebar__search-count {
+  flex: none;
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
 }
 
 .sidebar__scroll {
@@ -628,6 +673,7 @@ body.is-resizing * {
   flex: 1;
   min-width: 0;
   min-height: 0;
+  position: relative; /* anchors the drag-and-drop indicator */
   margin: 3px;
   border: 1px solid var(--divider);
   border-radius: var(--radius-pane);
@@ -669,6 +715,126 @@ body.is-resizing * {
 
 .pane__identity {
   flex: 0 1 auto;
+  /* Without these the status badge overflows its box and lands on top of the
+     action row, which cannot shrink (`.pane__actions` is `flex: none`). */
+  min-width: 0;
+  overflow: hidden;
+}
+
+/*
+ * Narrow pane: the icon row folds into a single menu button, so the header only
+ * has to fit a title, a status badge and one icon.
+ */
+.pane--compact .pane__header {
+  gap: var(--space-1);
+  padding-right: var(--space-1);
+}
+
+.pane--compact .pane__new-output {
+  flex: none;
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+}
+
+/* The header is the drag handle, so the grab affordance belongs to all of it. */
+.pane__header {
+  cursor: grab;
+}
+
+.pane__header:active {
+  cursor: grabbing;
+}
+
+.pane__actions {
+  cursor: default;
+}
+
+.pane__grip {
+  display: flex;
+  flex: none;
+  align-items: center;
+  margin-left: calc(var(--space-2) * -1);
+  color: var(--text-secondary);
+  opacity: 0.55;
+}
+
+.pane:hover .pane__grip,
+.pane--active .pane__grip {
+  opacity: 1;
+}
+
+/*
+ * Drop preview. The overlay shows the half (or the whole pane, for a swap)
+ * the dragged terminal is about to occupy, so the gesture is legible before
+ * the layout tree actually changes.
+ */
+.detached-notice {
+  flex: none;
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--divider);
+  background: var(--surface-elevated);
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+}
+
+.pane--detached {
+  border-style: dashed;
+}
+
+.pane__detached-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.pane__detached-text {
+  margin: 0;
+  max-width: 34ch;
+  font-size: var(--font-size-sm);
+}
+
+.pane__drop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  border: 2px solid var(--primary);
+  border-radius: var(--radius-pane);
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+}
+
+.pane__drop--left {
+  inset: 0 50% 0 0;
+}
+
+.pane__drop--right {
+  inset: 0 0 0 50%;
+}
+
+.pane__drop--top {
+  inset: 0 0 50% 0;
+}
+
+.pane__drop--bottom {
+  inset: 50% 0 0 0;
+}
+
+.pane__drop-label {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-control);
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: 600;
 }
 
 .pane__metadata {
@@ -836,6 +1002,14 @@ body.is-resizing * {
 .empty-state__actions {
   display: flex;
   gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.empty-state__aside {
+  margin: 0;
+  max-width: 460px;
+  font-size: var(--font-size-sm);
 }
 
 /* ---------- status bar ---------- */

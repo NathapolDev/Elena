@@ -109,6 +109,81 @@ export function splitTerminal(
   return next
 }
 
+/** Where a dragged terminal lands relative to the pane it was dropped on. */
+export type DropPosition = 'left' | 'right' | 'top' | 'bottom' | 'swap'
+
+/**
+ * Moves an existing terminal next to another one, or swaps the two.
+ *
+ * Unlike `splitTerminal` there is no root-attach fallback: a move that cannot
+ * be resolved returns the tree untouched, because attaching a terminal that is
+ * already in the tree somewhere else would duplicate the leaf.
+ */
+export function moveTerminal(
+  root: LayoutNode | null,
+  sourceId: string,
+  targetId: string,
+  position: DropPosition
+): LayoutNode | null {
+  if (!root || sourceId === targetId) return root
+  if (!containsTerminal(root, sourceId) || !containsTerminal(root, targetId)) return root
+
+  // A swap rewrites two leaves in place, so every split ratio, tab id and
+  // active-tab choice around them survives untouched.
+  if (position === 'swap') {
+    const swap = (node: LayoutNode): LayoutNode => {
+      if (node.type === 'terminal') {
+        if (node.terminalId === sourceId) return { type: 'terminal', terminalId: targetId }
+        if (node.terminalId === targetId) return { type: 'terminal', terminalId: sourceId }
+        return node
+      }
+      if (node.type === 'tabs') {
+        return { ...node, tabs: node.tabs.map((tab) => ({ ...tab, layout: swap(tab.layout) })) }
+      }
+      return { ...node, children: [swap(node.children[0]), swap(node.children[1])] }
+    }
+    return swap(root)
+  }
+
+  const without = removeTerminal(root, sourceId)
+  // Removing the source cannot strand the target: both were present and the
+  // ids differ, so at least the target's leaf survives.
+  if (!without) return root
+
+  const direction = position === 'left' || position === 'right' ? 'horizontal' : 'vertical'
+  const sourceFirst = position === 'left' || position === 'top'
+  return insertBeside(without, targetId, sourceId, direction, sourceFirst)
+}
+
+/** Replaces `targetId`'s leaf with a split holding both, in the given order. */
+function insertBeside(
+  root: LayoutNode,
+  targetId: string,
+  newTerminalId: string,
+  direction: 'horizontal' | 'vertical',
+  newFirst: boolean
+): LayoutNode {
+  const leaf: LayoutNode = { type: 'terminal', terminalId: newTerminalId }
+
+  const replace = (node: LayoutNode): LayoutNode => {
+    if (node.type === 'terminal') {
+      if (node.terminalId !== targetId) return node
+      return {
+        type: 'split',
+        direction,
+        ratio: 0.5,
+        children: newFirst ? [leaf, node] : [node, leaf]
+      }
+    }
+    if (node.type === 'tabs') {
+      return { ...node, tabs: node.tabs.map((tab) => ({ ...tab, layout: replace(tab.layout) })) }
+    }
+    return { ...node, children: [replace(node.children[0]), replace(node.children[1])] }
+  }
+
+  return replace(root)
+}
+
 /** Removes a leaf and collapses the parent split into its surviving sibling. */
 export function removeTerminal(root: LayoutNode | null, terminalId: string): LayoutNode | null {
   if (!root) return null

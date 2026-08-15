@@ -12,7 +12,7 @@
  * observable at runtime and is not asserted anywhere. If that wiring is ever
  * touched, verify it by hand against a packaged build.
  */
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
@@ -45,10 +45,28 @@ describe('webPreferences', () => {
     expect(keys.filter((key) => forbidden.includes(key))).toEqual([])
   })
 
-  it('is the object the window is actually built from', () => {
-    // The extraction is only worth anything if index.ts still spreads it.
+  it('is the object every window is actually built from', () => {
+    // The extraction is only worth anything if the windows still spread it.
+    // Checking every construction site — not one named file — is what stops a
+    // second window (detached panes, a future dialog) being born relaxed.
+    const files = readdirSync(join(process.cwd(), 'src/main'), { recursive: true, encoding: 'utf8' })
+      .filter((name) => name.endsWith('.ts'))
+      .map((name) => join(process.cwd(), 'src/main', name))
+
+    const builders = files.filter((file) => readFileSync(file, 'utf8').includes('new BrowserWindow('))
+    expect(builders.length).toBeGreaterThan(0)
+    for (const file of builders) {
+      const source = readFileSync(file, 'utf8')
+      const constructions = source.split('new BrowserWindow(').length - 1
+      const spreads = source.split('...BROWSER_WINDOW_WEB_PREFERENCES').length - 1
+      expect(spreads, `${file} builds ${constructions} window(s) but spreads the posture ${spreads} time(s)`).toBe(
+        constructions
+      )
+    }
+  })
+
+  it('still installs the policy and the navigation guards', () => {
     const source = readFileSync(join(process.cwd(), 'src/main/index.ts'), 'utf8')
-    expect(source).toContain('...BROWSER_WINDOW_WEB_PREFERENCES')
     expect(source).toContain('contentSecurityPolicy(isDev)')
     expect(source).toContain('isAllowedExternalUrl(url)')
     expect(source).toContain('isAllowedNavigationUrl(url,')
