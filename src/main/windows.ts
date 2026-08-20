@@ -49,7 +49,12 @@ export function detachedTerminalIds(): string[] {
   return [...detached.keys()]
 }
 
-export function createMainWindow(): BrowserWindow {
+/**
+ * `query` is how a launch decides what the window opens on — Explorer's
+ * "Open in Elena" passes the workspace it resolved the folder to. Empty for an
+ * ordinary launch, which lands on the first workspace.
+ */
+export function createMainWindow(query: Record<string, string> = {}): BrowserWindow {
   const ctx = require_(context)
 
   mainWindow = new BrowserWindow({
@@ -84,7 +89,7 @@ export function createMainWindow(): BrowserWindow {
     mainWindow = null
   })
 
-  load(window, ctx, {})
+  load(window, ctx, query)
   return window
 }
 

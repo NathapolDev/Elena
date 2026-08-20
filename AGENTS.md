@@ -78,6 +78,14 @@ rejected. Its role arrives as query parameters on the loaded URL (`role`, `works
 `App.tsx` reads once at module scope. Note `broadcast` reaches *all* trusted windows, so each window filters
 `terminal:data` down to what it actually renders.
 
+**Shell integration (`src/main/shell/`)** — Explorer's *Open in Elena* verb. `--open-folder <path>` is a
+contract written down in **three** places that must agree: `build/installer.nsh` (install time),
+`explorerContextMenu.ts` (the Settings toggle and the post-update refresh), and `openFolderArgs.ts` (both the
+cold start and the `second-instance` handler, since Explorer relaunches the exe rather than talking to the
+running app). Renaming the flag or the `ElenaOpenFolder` key means changing all three;
+`tests/explorerContextMenu.test.ts` is what catches a partial rename. Opening a folder resolves to a workspace
+and nothing more — no session is started, per the restored-session rule below.
+
 **Preload (`src/preload/index.ts`)** exposes exactly `invoke`, `subscribe`, `platform` on `window.elena`. No
 generic `send`/`on`. Sandboxed, so it is built as CJS (`index.cjs`) — see the comment in `electron.vite.config.ts`.
 
@@ -156,8 +164,10 @@ the rule is the only thing standing between you and the bug.
    `tests/renderer-invariants.test.ts` counts the call sites.
 7. **Exactly one `subscribe('terminal:data', …)` call site exists**, in `App.tsx`, feeding `lib/terminalBus.ts`.
    Subscribing per pane is a fan-out bug, not a style preference. Also counted by `tests/renderer-invariants.test.ts`.
-8. **`app:error` is a declared-but-dead channel.** `App.tsx` subscribes to it but nothing in `src/main` broadcasts it.
-   Don't assume it works — either wire a `broadcast`, or return a `Result` failure instead.
+8. **`app:error` is for failures with no command to answer.** It exists because a shell "Open in Elena" click
+   has no renderer call to return a `Result` to, and a silent no-op there is undiagnosable. Anything reachable
+   from a command should still fail through that command's `Result`, not this channel. `tests/ipc-contract.test.ts`
+   asserts every declared event is genuinely broadcast, so a second dead channel cannot appear unnoticed.
 9. **`workspace:update` patches are wholesale, so every window must stay subscribed to `workspace:changed`.**
    `renameTerminal` and `closeTerminal` send the entire `terminals` array built from that window's own copy.
    With a second window open, a stale copy silently deletes terminals it never knew about — the config
@@ -186,7 +196,7 @@ the rule is the only thing standing between you and the bug.
 - Several suites are *guard tests*: they encode a contract rather than a behaviour, and a failure means the contract
   was broken, not that the test is stale. Fix the code, not the assertion:
   `ipc-contract`, `ipc-preload`, `ipc-bus`, `security-posture`, `theme-tokens`, `renderer-invariants`,
-  `persistence-migration`, `logger-no-pty`, `agent-docs`.
+  `persistence-migration`, `logger-no-pty`, `agent-docs`, `explorerContextMenu`.
 - `e2e/smoke.spec.ts` is one serial user journey (create workspace → real PTY → split → theme switch → restart → quit
   without orphans) against a temp `--user-data-dir`. Electron automation is experimental, so E2E covers user flows only;
   layout, PTY and persistence guarantees are proven by vitest.

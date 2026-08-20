@@ -23,6 +23,16 @@ import { SettingsStore } from './store/settingsStore'
 import { WorkspaceStore } from './store/workspaceStore'
 import { applyThemePreference, onSystemThemeChanged, resolvedTheme } from './theme'
 import { logger } from './logger'
+import type { AppError } from '@shared/types'
+import {
+  explorerContextMenuAbsent,
+  explorerContextMenuMatches,
+  explorerContextMenuSupported,
+  registerExplorerContextMenu,
+  unregisterExplorerContextMenu
+} from './shell/explorerContextMenu'
+import { openFolderWorkspace } from './shell/openFolder'
+import { parseOpenFolderArg } from './shell/openFolderArgs'
 import { UpdateManager } from './update/UpdateManager'
 import { currentDistribution, updatesSupported } from './update/distribution'
 import { createDisabledUpdaterClient, createElectronUpdaterClient } from './update/electronUpdaterClient'
@@ -52,11 +62,22 @@ const pty = new PtyManager({
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  // Explorer's "Open in Elena" launches the app again rather than talking to it,
+  // so the folder it wants arrives here as the second instance's argv.
+  app.on('second-instance', (_event, argv) => {
     const window = getMainWindow()
-    if (!window) return
-    if (window.isMinimized()) window.restore()
-    window.focus()
+    if (window) {
+      if (window.isMinimized()) window.restore()
+      window.focus()
+    }
+
+    const requested = parseOpenFolderArg(argv)
+    if (!requested) return
+    // The lock is taken before `whenReady`, so a click that lands during a cold
+    // start has no window to talk to yet. Queuing it for the first load is what
+    // keeps a double-click on two folders from losing one of them.
+    queuedOpenFolder = { path: requested }
+    if (window) flushQueuedOpenFolder()
   })
   void bootstrap()
 }
@@ -107,13 +128,108 @@ async function bootstrap(): Promise<void> {
     }
   })
 
+  // Both of these block the main thread — one on `reg.exe`, the other on a
+  // renderer that has to exist to show a toast — so they wait for a window's
+  // first load rather than sitting between the window and its first paint. A
+  // window that never finishes loading leaves them for the next one.
+  const armDeferredStartup = (window: BrowserWindow): void => {
+    window.webContents.once('did-finish-load', () => {
+      flushQueuedOpenFolder()
+      applyExplorerContextMenuPreference()
+    })
+  }
+
   Menu.setApplicationMenu(null)
-  createMainWindow()
+  armDeferredStartup(createMainWindow(initialWindowQuery()))
   void updates.check()
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createMainWindow()
+    if (BrowserWindow.getAllWindows().length === 0) armDeferredStartup(createMainWindow())
   })
+}
+
+/**
+ * An "Open in Elena" request waiting for a window. The folder is kept
+ * unresolved on purpose: `second-instance` can fire before `whenReady`, and
+ * resolving against a `WorkspaceStore` that has not loaded yet would find no
+ * match and create a duplicate workspace for a folder that already has one.
+ */
+type QueuedOpenFolder = { path: string } | { error: AppError }
+let queuedOpenFolder: QueuedOpenFolder | null = null
+
+function openFolderError(path: string, reason: string): AppError {
+  return {
+    code: 'INVALID_CWD',
+    message: `That folder cannot be opened (${reason}): ${path}`,
+    action: 'choose-directory'
+  }
+}
+
+/** Called once a window exists, and therefore once the stores have loaded. */
+function flushQueuedOpenFolder(): void {
+  const queued = queuedOpenFolder
+  if (!queued) return
+  queuedOpenFolder = null
+
+  if ('error' in queued) {
+    // Silence here is a click that did nothing and cannot be diagnosed.
+    broadcast('app:error', queued.error)
+    return
+  }
+
+  const outcome = openFolderWorkspace(workspaces, queued.path)
+  if (!outcome.ok) {
+    broadcast('app:error', openFolderError(queued.path, outcome.reason))
+    return
+  }
+  // The workspace may be brand new, and every window rebuilds its list from
+  // `workspace:changed`; send that first so the open request lands on a list
+  // that already contains it.
+  if (outcome.created) broadcast('workspace:changed', { workspaceId: outcome.workspaceId })
+  broadcast('workspace:open-requested', { workspaceId: outcome.workspaceId })
+}
+
+/**
+ * The workspace a cold start should land on. Only Explorer's verb sets one; an
+ * ordinary launch returns an empty query and the renderer picks the first
+ * workspace as before. A resolved folder is handed over as the window's own
+ * query rather than as an event, so the first render is already correct.
+ *
+ * Runs after `workspaces.load()`, so resolving here is safe.
+ */
+function initialWindowQuery(): Record<string, string> {
+  const requested = parseOpenFolderArg(process.argv)
+  if (!requested) return {}
+  const outcome = openFolderWorkspace(workspaces, requested)
+  if (outcome.ok) return { workspaceId: outcome.workspaceId }
+  // A rejection waits for the window that is about to be created.
+  queuedOpenFolder = { error: openFolderError(requested, outcome.reason) }
+  return {}
+}
+
+/**
+ * Re-applies the Explorer verb to match the stored preference on every launch.
+ * The installer wrote it once; this is what keeps it correct after an update
+ * moves the executable, and what makes the Settings toggle survive a relaunch.
+ */
+function applyExplorerContextMenuPreference(): void {
+  if (!explorerContextMenuSupported(app.isPackaged)) return
+  const wanted = settings.get().explorerContextMenu
+  try {
+    // The common launch changes nothing, so check before writing nine values.
+    if (wanted) {
+      if (explorerContextMenuMatches(app.getPath('exe'))) return
+      registerExplorerContextMenu(app.getPath('exe'))
+    } else {
+      if (explorerContextMenuAbsent()) return
+      unregisterExplorerContextMenu()
+    }
+    logger.info('shell.context-menu.applied', { enabled: wanted })
+  } catch {
+    // A shell integration is not worth failing a launch over, and the thrown
+    // message is not worth logging: it is `reg.exe` metadata, not a diagnosis.
+    logger.warn('shell.context-menu.apply-failed', { enabled: wanted })
+  }
 }
 
 function applyContentSecurityPolicy(): void {

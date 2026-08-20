@@ -19,6 +19,8 @@ win:
         - x64
   artifactName: ${productName}-${version}-${arch}.${ext}
 nsis:
+  # Registers the Explorer "Open in Elena" verb; removed again on uninstall.
+  include: build/installer.nsh
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true

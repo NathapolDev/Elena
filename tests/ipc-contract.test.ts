@@ -29,7 +29,7 @@ const REGISTER_PATH = join(SRC_MAIN, 'ipc/register.ts')
  * looking like a working feature. Remove the entry when a broadcast is wired,
  * or delete the channel.
  */
-const KNOWN_UNBROADCAST: readonly string[] = ['app:error']
+const KNOWN_UNBROADCAST: readonly string[] = []
 
 async function readMainSources(dir: string = SRC_MAIN): Promise<string> {
   const entries = await readdir(dir, { withFileTypes: true })

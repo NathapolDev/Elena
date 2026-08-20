@@ -80,6 +80,7 @@ type State = {
   renameWorkspace: (id: string, name: string) => Promise<boolean>
   deleteWorkspace: (id: string) => Promise<void>
   selectWorkspace: (id: string) => void
+  openWorkspaceById: (id: string) => Promise<void>
 
   startQuickSession: (presetId: string) => Promise<void>
   addTerminal: (request: NewTerminalRequest) => Promise<void>
@@ -127,7 +128,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   scrollback: 10_000,
   confirmCloseRunning: true,
   warnOnMultilinePaste: true,
-  defaultShellId: null
+  defaultShellId: null,
+  explorerContextMenu: true
 }
 
 export const useStore = create<State>((set, get) => ({
@@ -229,6 +231,18 @@ export const useStore = create<State>((set, get) => ({
       get().pushError(error)
       return false
     }
+  },
+
+  /**
+   * Switches to a workspace the main process picked — the Explorer "Open in
+   * Elena" path. The workspace may have been created a moment ago, so a list
+   * that does not know it yet is re-read rather than treated as a miss.
+   */
+  async openWorkspaceById(id) {
+    if (!get().workspaces.some((workspace) => workspace.id === id)) {
+      await get().refreshWorkspaces()
+    }
+    get().selectWorkspace(id)
   },
 
   selectWorkspace(id) {

@@ -12,13 +12,24 @@ export type PathCheck =
 
 /** True when `child` is `parent` or lives underneath it. Case-insensitive on win32. */
 export function isInside(parent: string, child: string): boolean {
+  if (isSamePath(parent, child)) return true
   const p = normalize(resolve(parent))
   const c = normalize(resolve(child))
   const a = process.platform === 'win32' ? p.toLowerCase() : p
   const b = process.platform === 'win32' ? c.toLowerCase() : c
-  if (a === b) return true
   const rel = relative(a, b)
   return rel.length > 0 && !rel.startsWith('..') && !isAbsolute(rel)
+}
+
+/**
+ * True when two paths name the same folder. Case-insensitive on win32, so the
+ * `C:\Repos\Elena` Explorer hands over matches a workspace stored as
+ * `C:\repos\elena`.
+ */
+export function isSamePath(a: string, b: string): boolean {
+  const left = normalize(resolve(a))
+  const right = normalize(resolve(b))
+  return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right
 }
 
 export function validateDirectory(input: string, mustBeInside?: string): PathCheck {

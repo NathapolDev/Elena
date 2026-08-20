@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { call } from '../lib/api'
 import { useStore } from '../state/store'
 import type { AgentPreset, ThemePreference } from '@shared/types'
 import { TerminalTypographySettings } from './TerminalTypographySettings'
@@ -32,6 +33,25 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
   const [draft, setDraft] = useState<PresetDraft>(EMPTY_PRESET)
   const [argsText, setArgsText] = useState('')
   const [envText, setEnvText] = useState('')
+  // The Explorer verb is a registry entry against a fixed executable path, so a
+  // dev run has nothing stable to register. Ask rather than guess.
+  const [packaged, setPackaged] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    void call('app:info')
+      .then((info) => {
+        if (active) setPackaged(info.packaged)
+      })
+      .catch(() => {
+        // A failed probe just leaves the toggle disabled; About surfaces the error.
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const explorerMenuSupported = window.elena?.platform === 'win32' && packaged
 
   const edit = (preset?: AgentPreset): void => {
     const next = preset
@@ -152,6 +172,22 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
               onChange={(event) => void updateSettings({ warnOnMultilinePaste: event.target.checked })}
             />
             Warn before pasting multiple lines
+          </label>
+          <label
+            style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}
+            title={
+              explorerMenuSupported
+                ? undefined
+                : 'Available in the installed Windows build.'
+            }
+          >
+            <input
+              type="checkbox"
+              disabled={!explorerMenuSupported}
+              checked={settings.explorerContextMenu}
+              onChange={(event) => void updateSettings({ explorerContextMenu: event.target.checked })}
+            />
+            Show &ldquo;Open in Elena&rdquo; when right-clicking a folder
           </label>
         </div>
 

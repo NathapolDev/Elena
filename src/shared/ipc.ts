@@ -113,6 +113,12 @@ export type Events = {
     endedAt: string
   }
   'workspace:changed': { workspaceId: string | null }
+  /**
+   * Explorer's "Open in Elena" reached a running app: switch the main window to
+   * this workspace. Always preceded by `workspace:changed`, since the workspace
+   * may have just been created for the folder.
+   */
+  'workspace:open-requested': { workspaceId: string }
   /** The full set, not a delta, so a late-arriving window cannot miss one. */
   'window:detached-changed': { terminalIds: string[] }
   'theme:changed': { resolvedTheme: ResolvedTheme }
@@ -168,6 +174,7 @@ export const EVENT_CHANNELS = [
   'terminal:status-changed',
   'terminal:exit',
   'workspace:changed',
+  'workspace:open-requested',
   'window:detached-changed',
   'theme:changed',
   'app:error',
