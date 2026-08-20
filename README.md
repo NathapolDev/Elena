@@ -32,6 +32,7 @@ Under **Assets**, download `Elena-<version>-x64.exe` and run it. Elena is not ye
 - **Flexible layouts** — arrange terminals in tabs, horizontal or vertical splits, or a paginated 2×2 spatial grid.
 - **Agent presets** — define reusable executables, arguments, working directories, and allowlisted environment variables.
 - **Persistent setup** — restore workspaces, terminal configuration, names, and layouts after relaunching Elena.
+- **Open in Elena** — right-click any folder in Windows Explorer to open it, reusing its workspace or creating one.
 - **Focused controls** — rename, search, zoom, restart, stop, and close sessions without leaving the workspace.
 - **Live appearance** — switch between light, dark, and system themes without remounting active terminals.
 - **Automatic updates** — check stable GitHub Releases, track download progress, and install after a confirmed restart.
@@ -57,7 +58,9 @@ npm run dev
 
 ## Typical Workflow
 
-1. Create a workspace and bind it to an existing project folder.
+1. Create a workspace and bind it to an existing project folder — or right-click the folder in Explorer and
+   choose **Open in Elena**, which reuses its workspace or creates one named after it. Turn the entry off under
+   Settings if you would rather not have it.
 2. Open a detected shell, an agent preset, or a custom executable.
 3. Add sessions as tabs or splits, then use **Layout: 2×2** when you need a wider operational view.
 4. Close Elena when finished. Workspace and layout configuration return on the next launch; processes do not restart automatically.

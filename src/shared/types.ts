@@ -95,6 +95,8 @@ export type AppSettings = {
   confirmCloseRunning: boolean
   warnOnMultilinePaste: boolean
   defaultShellId: string | null
+  /** Windows only: whether the "Open in Elena" Explorer verb is registered. */
+  explorerContextMenu: boolean
 }
 
 export type ResolvedTheme = 'light' | 'dark'
@@ -103,6 +105,8 @@ export type AppInfo = {
   appVersion: string
   electronVersion: string
   developer: string
+  /** A dev run has no stable executable path, so some OS integrations are off. */
+  packaged: boolean
 }
 
 export type UpdateState =

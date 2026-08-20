@@ -89,7 +89,8 @@ export const appSettingsSchema = z.object({
   scrollback: z.number().int().min(1000).max(200_000),
   confirmCloseRunning: z.boolean(),
   warnOnMultilinePaste: z.boolean(),
-  defaultShellId: z.string().min(1).nullable()
+  defaultShellId: z.string().min(1).nullable(),
+  explorerContextMenu: z.boolean()
 })
 
 export const WORKSPACE_SCHEMA_VERSION = 2

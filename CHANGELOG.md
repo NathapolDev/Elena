@@ -3,6 +3,16 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **Open in Elena** in the Windows Explorer context menu. Right-click a folder, the empty background inside an
+  open folder, or a drive, and Elena opens on it: an existing workspace for that folder is selected, and a
+  folder without one gets a workspace named after it. No session starts by itself — a restored session stays
+  configuration, as everywhere else. The entry is registered by the installer and removed on uninstall, and
+  Settings has a *Show "Open in Elena" when right-clicking a folder* toggle for turning it off and back on.
+
 ## [0.4.0] - 2026-08-15
 
 ### Added

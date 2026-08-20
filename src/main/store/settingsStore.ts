@@ -18,7 +18,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   scrollback: 10_000, // NFR-04
   confirmCloseRunning: true,
   warnOnMultilinePaste: true, // NFR-14
-  defaultShellId: null
+  defaultShellId: null,
+  // The installer registers the Explorer verb, so the stored default has to
+  // agree with it or the first settings write would silently remove it.
+  explorerContextMenu: true
 }
 
 type SettingsFile = { schemaVersion: number; settings: AppSettings }

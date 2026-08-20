@@ -50,7 +50,12 @@ type Modal =
  */
 const windowParams = new URLSearchParams(window.location.search)
 const detachedTerminalId = windowParams.get('role') === 'detached' ? windowParams.get('terminalId') : null
-const detachedWorkspaceId = detachedTerminalId ? windowParams.get('workspaceId') : null
+/**
+ * Which workspace this window opens on: the one a detached window belongs to,
+ * or the one Explorer's "Open in Elena" resolved the folder to. Absent for an
+ * ordinary launch, which lands on the first workspace.
+ */
+const initialWorkspaceId = windowParams.get('workspaceId')
 
 export function App(): React.JSX.Element {
   const ready = useStore((s) => s.ready)
@@ -128,7 +133,7 @@ export function App(): React.JSX.Element {
   )
 
   useEffect(() => {
-    void bootstrap(detachedWorkspaceId ?? undefined)
+    void bootstrap(initialWorkspaceId ?? undefined)
   }, [bootstrap])
 
   useEffect(() => {
@@ -165,10 +170,21 @@ export function App(): React.JSX.Element {
       // stale copy would overwrite terminals it never knew about. Re-reading on
       // every change is what keeps the windows converged.
       on('workspace:changed', () => void useStore.getState().refreshWorkspaces()),
+      // Explorer asked a running Elena to open a folder. Only the main window
+      // switches: a detached window renders one terminal and owns no workspace.
+      on('workspace:open-requested', ({ workspaceId }) => {
+        if (detachedTerminalId) return
+        void useStore.getState().openWorkspaceById(workspaceId)
+      }),
       on('terminal:status-changed', ({ terminalId, status, pid }) => applyStatus(terminalId, status, pid)),
       on('terminal:exit', ({ terminalId, exitCode, signal }) => applyExit(terminalId, exitCode, signal)),
       on('theme:changed', ({ resolvedTheme: theme }) => setResolvedTheme(theme)),
-      on('app:error', (error) => pushToast({ title: 'Error', body: error.message, tone: 'error' })),
+      // Broadcast reaches every window; only the main one reports app-level
+      // failures, or a shell "Open in Elena" miss raises a toast per window.
+      on('app:error', (error) => {
+        if (detachedTerminalId) return
+        pushToast({ title: 'Error', body: error.message, tone: 'error' })
+      }),
       on('app:update-state', applyUpdateState)
     ]
     return () => unsubscribers.forEach((off) => off())
