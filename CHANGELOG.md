@@ -5,6 +5,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-22
+
 ### Added
 
 - **Open in Elena** in the Windows Explorer context menu. Right-click a folder, the empty background inside an
@@ -12,6 +14,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
   folder without one gets a workspace named after it. No session starts by itself — a restored session stays
   configuration, as everywhere else. The entry is registered by the installer and removed on uninstall, and
   Settings has a *Show "Open in Elena" when right-clicking a folder* toggle for turning it off and back on.
+
+  On Windows 11 the entry appears under *Show more options* (Shift+F10) rather than in the first context menu,
+  which is where Windows places verbs from apps that are not registered as shell extensions.
 
 ## [0.4.0] - 2026-08-15
 
