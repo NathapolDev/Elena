@@ -5,7 +5,7 @@
  * workspace reuses it, a folder that does not gets one — plus the argv contract
  * shared with the installer and the registry entries.
  */
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, rmSync, symlinkSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, sep } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -91,6 +91,25 @@ describe('openFolderWorkspace', () => {
       workspaceId: existing.id,
       created: false
     })
+  })
+
+  // The incoming path arrives canonicalised from `validateDirectory`, so a
+  // `projectRoot` stored in any other spelling of the same folder used to miss
+  // and create a duplicate. CI caught it by accident — the runner's `tmpdir()`
+  // carries 8.3 short names — so pin the shape deliberately with a junction,
+  // which is what a user hits.
+  it('reuses a workspace whose stored root reaches the folder by another name', () => {
+    const project = folder('real-project')
+    const link = join(dir, 'linked-project')
+    symlinkSync(project, link, 'junction')
+    const existing = store.create('Linked', link)
+
+    expect(openFolderWorkspace(store, project)).toEqual({
+      ok: true,
+      workspaceId: existing.id,
+      created: false
+    })
+    expect(store.list()).toHaveLength(1)
   })
 
   it('gives the home folder its own workspace instead of reusing Quick Session', () => {
