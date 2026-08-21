@@ -23,6 +23,18 @@ import type {
 } from './types'
 
 export type Commands = {
+  /**
+   * The renderer has installed its event subscriptions and can receive
+   * broadcasts. `did-finish-load` fires before React runs the effect that
+   * subscribes, and the bus does not buffer, so main has no other way to know
+   * an event it sends will actually be heard.
+   *
+   * Sent by the main window only, once per load. A detached window renders a
+   * single terminal and returns early from every app-level broadcast, so
+   * nothing waits on its readiness — and the handler cannot tell senders apart,
+   * since `registerCommand` deliberately hands the payload and not the event.
+   */
+  'app:renderer-ready': { req: void; res: { acknowledged: true } }
   'app:info': { req: void; res: AppInfo }
   'app:update-status': { req: void; res: UpdateState }
   'app:update-check': { req: void; res: UpdateState }
@@ -137,6 +149,7 @@ export type EventPayload<E extends EventName> = Events[E]
  * exhaustiveness assertion below is what turns that into a compile error.
  */
 export const COMMAND_CHANNELS = [
+  'app:renderer-ready',
   'app:info',
   'app:update-status',
   'app:update-check',

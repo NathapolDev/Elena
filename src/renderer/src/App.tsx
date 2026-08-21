@@ -187,6 +187,14 @@ export function App(): React.JSX.Element {
       }),
       on('app:update-state', applyUpdateState)
     ]
+    // Every subscription above now exists, so main can safely broadcast to this
+    // window — it holds anything queued for a shell "Open in Elena" until this
+    // call arrives, because `did-finish-load` fires before this effect runs and
+    // the bus does not buffer. Detached windows return early from each of these
+    // app-level events, so only the main window answers.
+    // A failure here costs a queued folder, not the session; there is no
+    // sensible retry and a toast would say nothing the user can act on.
+    if (!detachedTerminalId) void call('app:renderer-ready').catch(() => {})
     return () => unsubscribers.forEach((off) => off())
   }, [applyExit, applyStatus, applyUpdateState, pushToast, setResolvedTheme])
 

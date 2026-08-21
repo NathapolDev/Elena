@@ -31,10 +31,20 @@ export type Deps = {
   pty: PtyManager
   updates: UpdateManager
   getWindow: () => BrowserWindow | null
+  /** The main window's renderer is subscribed; anything queued for it can go. */
+  onRendererReady: () => void
 }
 
 export function registerIpcHandlers(deps: Deps): void {
   const { workspaces, settings, presets, pty, updates } = deps
+
+  // Answered before anything is broadcast to this window, so a queued shell
+  // request is delivered to subscriptions that exist rather than into the gap
+  // between `did-finish-load` and React running the effect that installs them.
+  registerCommand('app:renderer-ready', requestSchemas['app:renderer-ready'], () => {
+    deps.onRendererReady()
+    return ok({ acknowledged: true } as const)
+  })
 
   registerCommand('app:info', requestSchemas['app:info'], () =>
     ok({

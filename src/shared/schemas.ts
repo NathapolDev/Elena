@@ -120,6 +120,7 @@ export const presetsFileSchema = z.object({
  * `Object.keys(requestSchemas)` as the authoritative command list.
  */
 export const requestSchemas = {
+  'app:renderer-ready': z.void().or(z.undefined()),
   'app:info': z.void().or(z.undefined()),
   'app:update-status': z.void().or(z.undefined()),
   'app:update-check': z.void().or(z.undefined()),

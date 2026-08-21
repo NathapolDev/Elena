@@ -160,7 +160,19 @@ export const useStore = create<State>((set, get) => ({
       ])
       // A detached window is told which workspace it belongs to; the main
       // window has no preference and opens the first one.
-      const first = (preferredWorkspaceId && workspaces.find((w) => w.id === preferredWorkspaceId)) || workspaces[0]
+      //
+      // An `activeWorkspaceId` already set means something chose one while
+      // these six calls were in flight — in practice a shell "Open in Elena"
+      // arriving through `workspace:open-requested`. It starts null, so there
+      // is no other way for it to be set here, and honouring it keeps that
+      // choice from being overwritten by whichever workspace happens to be
+      // first. Without this the outcome would rest on all six handlers staying
+      // synchronous, which nothing enforces.
+      const chosen = get().activeWorkspaceId
+      const first =
+        (preferredWorkspaceId && workspaces.find((w) => w.id === preferredWorkspaceId)) ||
+        (chosen && workspaces.find((w) => w.id === chosen)) ||
+        workspaces[0]
       set({
         ready: true,
         workspaces,

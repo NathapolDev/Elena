@@ -99,7 +99,18 @@ async function bootstrap(): Promise<void> {
 
   applyContentSecurityPolicy()
   hardenWebContents()
-  registerIpcHandlers({ workspaces, settings, presets, pty, updates, getWindow: getMainWindow })
+  registerIpcHandlers({
+    workspaces,
+    settings,
+    presets,
+    pty,
+    updates,
+    getWindow: getMainWindow,
+    onRendererReady: () => {
+      rendererSubscribed = true
+      flushQueuedOpenFolder()
+    }
+  })
 
   onSystemThemeChanged((theme) => broadcast('theme:changed', { resolvedTheme: theme }))
 
@@ -126,14 +137,10 @@ async function bootstrap(): Promise<void> {
     }
   })
 
-  // Both of these block the main thread — one on `reg.exe`, the other on a
-  // renderer that has to exist to show a toast — so they wait for a window's
-  // first load rather than sitting between the window and its first paint. A
-  // window that never finishes loading leaves them for the next one.
-  //
-  // The queue flush is `on`, not `once`: a reload tears down App.tsx's
-  // subscriptions too, so every finished load is a moment where a waiting
-  // request becomes deliverable. The context-menu reconcile really is one-shot.
+  // `applyExplorerContextMenuPreference` blocks the main thread on `reg.exe`,
+  // so it waits for a window's first load rather than sitting between the
+  // window and its first paint. A window that never finishes loading leaves it
+  // for the next one.
   const armDeferredStartup = (window: BrowserWindow): void => {
     // Synchronously, not via the navigation listener: `createMainWindow` has
     // already published this window through `getMainWindow()`, so a click
@@ -148,10 +155,9 @@ async function bootstrap(): Promise<void> {
       if (event.isSameDocument || !event.isMainFrame) return
       rendererSubscribed = false
     })
-    window.webContents.on('did-finish-load', () => {
-      rendererSubscribed = true
-      flushQueuedOpenFolder()
-    })
+    // Readiness is answered by `app:renderer-ready`, not by this event — the
+    // renderer installs its subscriptions a frame or so after the load
+    // finishes. The reconcile has no such requirement and stays here.
     window.webContents.once('did-finish-load', applyExplorerContextMenuPreference)
   }
 
@@ -189,10 +195,10 @@ let queuedOpenFolder: QueuedOpenFolder | null = null
  * every main-frame navigation start, since both a replacement window and a
  * reload take those subscriptions down with them.
  *
- * `did-finish-load` is the closest signal main can see without the renderer
- * calling in, and App.tsx's `subscribe` effect runs a frame or so after it, so
- * a sliver of the gap survives. Closing it completely means a renderer-ready
- * command in the IPC contract; the sliver is what that would buy.
+ * Set only by `app:renderer-ready`, which App.tsx sends after its subscriptions
+ * are installed. `did-finish-load` was the closest main could observe on its
+ * own, but React runs that effect a frame or so later, which left a sliver of
+ * the gap open; the renderer saying so itself is what closes it.
  */
 let rendererSubscribed = false
 
