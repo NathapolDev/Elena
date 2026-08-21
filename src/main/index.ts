@@ -73,11 +73,9 @@ if (!app.requestSingleInstanceLock()) {
 
     const requested = parseOpenFolderArg(argv)
     if (!requested) return
-    // The lock is taken before `whenReady`, so a click that lands during a cold
-    // start has no window to talk to yet. Queuing it for the first load is what
-    // keeps a double-click on two folders from losing one of them.
-    queuedOpenFolder = { path: requested }
-    if (window) flushQueuedOpenFolder()
+    // The lock is taken before `whenReady`, so a click during a cold start has
+    // no renderer to talk to yet. `queueOpenFolder` holds it until there is one.
+    queueOpenFolder({ path: requested })
   })
   void bootstrap()
 }
@@ -132,11 +130,29 @@ async function bootstrap(): Promise<void> {
   // renderer that has to exist to show a toast — so they wait for a window's
   // first load rather than sitting between the window and its first paint. A
   // window that never finishes loading leaves them for the next one.
+  //
+  // The queue flush is `on`, not `once`: a reload tears down App.tsx's
+  // subscriptions too, so every finished load is a moment where a waiting
+  // request becomes deliverable. The context-menu reconcile really is one-shot.
   const armDeferredStartup = (window: BrowserWindow): void => {
-    window.webContents.once('did-finish-load', () => {
-      flushQueuedOpenFolder()
-      applyExplorerContextMenuPreference()
+    // Synchronously, not via the navigation listener: `createMainWindow` has
+    // already published this window through `getMainWindow()`, so a click
+    // arriving before the first event would be flushed against a flag still
+    // left `true` by the window this one replaced.
+    rendererSubscribed = false
+    // `did-start-navigation` with this filter, matching `windows.ts` — the
+    // `did-start-loading` pair would be asymmetric, since it also fires for
+    // subframes while `did-finish-load` is main-frame only, and the flag would
+    // latch `false` with nothing to set it back.
+    window.webContents.on('did-start-navigation', (event) => {
+      if (event.isSameDocument || !event.isMainFrame) return
+      rendererSubscribed = false
     })
+    window.webContents.on('did-finish-load', () => {
+      rendererSubscribed = true
+      flushQueuedOpenFolder()
+    })
+    window.webContents.once('did-finish-load', applyExplorerContextMenuPreference)
   }
 
   Menu.setApplicationMenu(null)
@@ -155,7 +171,30 @@ async function bootstrap(): Promise<void> {
  * match and create a duplicate workspace for a folder that already has one.
  */
 type QueuedOpenFolder = { path: string } | { error: AppError }
+
+/**
+ * At most one request waits at a time: a second click supersedes one that has
+ * not landed yet, because the user's latest click is the folder they want the
+ * window on, and two `workspace:open-requested` events in a row would only race
+ * each other to decide the same thing.
+ */
 let queuedOpenFolder: QueuedOpenFolder | null = null
+
+/**
+ * Whether a renderer is currently listening. `broadcast` is a bare
+ * `webContents.send` with no buffering, so an event delivered between the
+ * `BrowserWindow` constructor and App.tsx's `subscribe` is dropped outright —
+ * and `getMainWindow()` is non-null for that whole gap, which is why window
+ * existence is not the thing to test. Cleared when a window is armed and on
+ * every main-frame navigation start, since both a replacement window and a
+ * reload take those subscriptions down with them.
+ *
+ * `did-finish-load` is the closest signal main can see without the renderer
+ * calling in, and App.tsx's `subscribe` effect runs a frame or so after it, so
+ * a sliver of the gap survives. Closing it completely means a renderer-ready
+ * command in the IPC contract; the sliver is what that would buy.
+ */
+let rendererSubscribed = false
 
 function openFolderError(path: string, reason: string): AppError {
   return {
@@ -165,7 +204,17 @@ function openFolderError(path: string, reason: string): AppError {
   }
 }
 
-/** Called once a window exists, and therefore once the stores have loaded. */
+/**
+ * Parks a request and delivers it if a renderer is already listening. Anything
+ * that arrives earlier is settled by `did-finish-load`, so the click can never
+ * be answered by a `send` into a window that has nothing subscribed yet.
+ */
+function queueOpenFolder(request: QueuedOpenFolder): void {
+  queuedOpenFolder = request
+  if (getMainWindow() && rendererSubscribed) flushQueuedOpenFolder()
+}
+
+/** Called once a renderer is listening, and therefore once the stores have loaded. */
 function flushQueuedOpenFolder(): void {
   const queued = queuedOpenFolder
   if (!queued) return
@@ -203,7 +252,7 @@ function initialWindowQuery(): Record<string, string> {
   const outcome = openFolderWorkspace(workspaces, requested)
   if (outcome.ok) return { workspaceId: outcome.workspaceId }
   // A rejection waits for the window that is about to be created.
-  queuedOpenFolder = { error: openFolderError(requested, outcome.reason) }
+  queueOpenFolder({ error: openFolderError(requested, outcome.reason) })
   return {}
 }
 
