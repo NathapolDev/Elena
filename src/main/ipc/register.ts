@@ -240,12 +240,11 @@ export function registerIpcHandlers(deps: Deps): void {
   registerCommand('settings:update', requestSchemas['settings:update'], (patch) => {
     // The Explorer verb lives in the registry, not in settings.json. Apply it
     // before the write, so a stored preference can never claim something the
-    // shell does not actually show. When it fails, that one field is dropped
-    // and the rest of the patch still lands — a failing registry must not cost
-    // the user the theme they changed in the same dialog — and the failure is
-    // reported as an event, so the settings this returns stay true to disk.
-    let explorerFailed = false
-    let effective = patch
+    // shell does not actually show, and abandon the whole patch if it fails:
+    // this failure has a command to answer, so it belongs in that command's
+    // Result and not on `app:error`, which exists for the shell click that has
+    // no call to return to. Writing nothing is also what keeps the settings
+    // this returns true to disk — there is no half-applied patch to describe.
     if (patch.explorerContextMenu !== undefined && explorerContextMenuSupported(app.isPackaged)) {
       try {
         if (patch.explorerContextMenu) registerExplorerContextMenu(app.getPath('exe'))
@@ -254,23 +253,13 @@ export function registerIpcHandlers(deps: Deps): void {
         // The thrown message is `reg.exe` metadata carrying the profile path;
         // only the outcome belongs in the log (NFR-09).
         logger.error('shell.context-menu.update-failed', { enabled: patch.explorerContextMenu })
-        explorerFailed = true
-        effective = { ...patch }
-        delete effective.explorerContextMenu
+        return fail('INTERNAL', 'Could not update the Windows Explorer entry.', 'retry')
       }
     }
-    // A patch whose only field was the failed toggle has nothing left to write.
-    const next = Object.keys(effective).length > 0 ? settings.update(effective) : settings.get()
-    if (effective.themePreference) applyThemePreference(effective.themePreference)
+    const next = settings.update(patch)
+    if (patch.themePreference) applyThemePreference(patch.themePreference)
     const theme = resolvedTheme()
     broadcast('theme:changed', { resolvedTheme: theme })
-    if (explorerFailed) {
-      broadcast('app:error', {
-        code: 'INTERNAL',
-        message: 'Could not update the Windows Explorer entry.',
-        action: 'retry'
-      })
-    }
     return ok({ settings: next, resolvedTheme: theme })
   })
 
