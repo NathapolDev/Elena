@@ -15,14 +15,17 @@
       `out/renderer/OFL-0xProto.txt`, and a terminal in the packaged app renders a Nerd Font glyph. SIL OFL 1.1
       requires the licence to travel with the font, so a missing `OFL-0xProto.txt` blocks the release.
 - [ ] Installer is scanned, signed when a certificate is available, and smoke-tested on a clean Windows 11 x64 account.
-- [ ] GitHub CI passes from a committed baseline before publishing.
+- [ ] GitHub CI passes from a committed baseline before publishing — the PR run for the commit being
+      tagged, since `main` itself is not built.
 
 ## Publishing
 
-Merging to `main` builds and tests the app but does **not** publish anything — the
-`release` job in `.github/workflows/ci.yml` is gated on `refs/tags/v*`, so a push to
-`main` leaves the installer as an expiring workflow artifact only. Pushing an
-annotated `vX.Y.Z` tag is what creates the GitHub Release.
+CI runs on pull requests and on `v*` tags only — merging to `main` does **not**
+trigger a build, because the PR that produced the commit was already built green.
+Pushing an annotated `vX.Y.Z` tag is therefore both the full gate on the release
+commit and the only thing that produces an installer; there is no `main` build to
+download an installer from between releases. To get one without releasing, run
+`npm run build:win` locally or open a PR.
 
 1. Run the candidate gate above against a specific commit on `main` and record its
    full SHA. That commit — not whatever `main` points at later — is the release.

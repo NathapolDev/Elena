@@ -2,12 +2,20 @@ name: CI
 
 on:
   push:
-    branches: [main]
     tags: ['v*']
   pull_request:
 
+# A squash-merged PR was already built green on the branch, and a v* tag points at
+# a commit that PR run covered. Building `main` too meant the same tree paid for a
+# third 30-minute Windows run, so the merge push is deliberately not a trigger.
 permissions:
   contents: read
+
+concurrency:
+  # Superseded PR pushes are worth cancelling. A tag run is not: it is the only run
+  # that produces the installer and publishes the release.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   windows:

@@ -40,7 +40,8 @@ npm run test:e2e
 ```
 
 CI (`.github/workflows/ci.yml`, `windows-latest`) runs lint → test → build → e2e → `build:win` in that order; keep all
-five green.
+five green. It triggers on pull requests and `v*` tags only — a push to `main` is not built, because the PR that
+produced the commit already was.
 
 ## Architecture
 
