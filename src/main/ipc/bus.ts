@@ -68,6 +68,24 @@ export function registerCommand<C extends CommandName>(
   })
 }
 
+/**
+ * Sends to one window instead of all of them.
+ *
+ * P2: `broadcast` reaches every trusted window, so `terminal:data` used to cost
+ * a structured clone per window per 16 ms flush and the renderers dropped what
+ * they did not draw. Main already knows which window owns a terminal, so the
+ * filtering belongs here. Same trust check as `broadcast` — a window that is
+ * not ours never receives an event.
+ */
+export function sendTo<E extends EventName>(
+  target: WebContents | null,
+  channel: E,
+  payload: EventPayload<E>
+): void {
+  if (!target || target.isDestroyed() || !trustedContents.has(target.id)) return
+  target.send(channel, payload)
+}
+
 export function broadcast<E extends EventName>(channel: E, payload: EventPayload<E>): void {
   for (const contents of webContents.getAllWebContents()) {
     if (!trustedContents.has(contents.id) || contents.isDestroyed()) continue

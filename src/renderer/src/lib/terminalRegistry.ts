@@ -13,6 +13,7 @@
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { SearchAddon } from '@xterm/addon-search'
+import { WebglAddon } from '@xterm/addon-webgl'
 import type { ITheme } from '@xterm/xterm'
 import {
   DEFAULT_TERMINAL_FONT_SIZE,
@@ -27,6 +28,8 @@ export type TerminalEntry = {
   term: Terminal
   fit: FitAddon
   search: SearchAddon
+  /** Null when GPU rendering is off or unavailable — the DOM renderer is drawing this terminal. */
+  webgl: WebglAddon | null
   element: HTMLDivElement
   /** Re-measure now (mount, zoom, tab switch). */
   fitNow: () => void
@@ -37,6 +40,8 @@ export type TerminalEntry = {
 }
 
 const registry = new Map<string, TerminalEntry>()
+/** Mirrors the `gpuRendering` setting; new terminals are built to match it. */
+let currentGpuRendering = true
 
 export type TerminalTypography = {
   fontFamily: string | null
@@ -110,6 +115,54 @@ export function readTerminalTheme(): ITheme {
   }
 }
 
+/**
+ * P4/F1: the DOM renderer rebuilds spans per changed cell, which is the ceiling
+ * the "10 noisy PTYs under 200 ms" criterion in RELEASE.md meets first. WebGL
+ * draws the grid from a texture atlas instead.
+ *
+ * Both failure modes fall back to the DOM renderer rather than to a blank pane:
+ * construction throws where there is no usable GL context, and a context lost
+ * later — the compositor dropping it, or Chromium evicting the oldest of its
+ * ~16 live contexts because this app holds one per terminal — is answered by
+ * disposing the addon, which is what returns xterm to the DOM renderer.
+ * Disposal is safe to repeat and clearTextureAtlas() is a no-op afterwards, so
+ * nothing has to be nulled.
+ *
+ * Returns null rather than throwing: a terminal that cannot use the GPU is a
+ * terminal drawn by the DOM, not a terminal that failed to open.
+ */
+function loadWebgl(term: Terminal): WebglAddon | null {
+  try {
+    const addon = new WebglAddon()
+    addon.onContextLoss(() => addon.dispose())
+    term.loadAddon(addon)
+    return addon
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Switches every live terminal between the GPU and DOM renderers in place.
+ *
+ * xterm swaps renderers without touching the buffer, so this keeps scrollback,
+ * selection and focus — the same property that makes the theme flip safe. A
+ * pane is never remounted for this.
+ */
+export function applyGpuRenderingToAll(enabled: boolean): void {
+  if (enabled === currentGpuRendering) return
+  currentGpuRendering = enabled
+  for (const entry of registry.values()) {
+    if (enabled) {
+      entry.webgl = loadWebgl(entry.term)
+    } else {
+      entry.webgl?.dispose()
+      entry.webgl = null
+    }
+    entry.fitNow()
+  }
+}
+
 export function acquireTerminal(
   terminalId: string,
   options: { scrollback: number; onOutput: () => void }
@@ -142,6 +195,8 @@ export function acquireTerminal(
   term.loadAddon(fit)
   term.loadAddon(search)
   term.open(element)
+
+  const webgl = currentGpuRendering ? loadWebgl(term) : null
 
   const inputDisposable = term.onData((data) => {
     void call('terminal:write', { terminalId, data }).catch(() => {
@@ -195,6 +250,7 @@ export function acquireTerminal(
     term,
     fit,
     search,
+    webgl,
     element,
     fitNow,
     scheduleFit,
@@ -254,14 +310,17 @@ export function applyTerminalTypographyToAll(typography: TerminalTypography): vo
  * ends in `monospace`, so it selects the identical face; even a paint landing
  * between the two writes is visually identical.
  *
- * No clearTextureAtlas() call: the DOM renderer has no atlas. Add one here if
- * @xterm/addon-webgl is ever adopted.
+ * The WebGL renderer caches glyphs in a texture atlas keyed by the old cell
+ * box, so the re-measure has to be followed by dropping that atlas or the
+ * terminal keeps painting the previous face at the new size. No-op when the
+ * addon is absent or already fell back to the DOM renderer.
  */
 export function remeasureTerminalFonts(): void {
   const fontFamily = terminalFontStack(currentTypography.fontFamily)
   for (const entry of registry.values()) {
     entry.term.options.fontFamily = `${fontFamily}, monospace`
     entry.term.options.fontFamily = fontFamily
+    entry.webgl?.clearTextureAtlas()
     entry.fitNow()
   }
 }

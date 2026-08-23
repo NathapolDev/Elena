@@ -90,7 +90,8 @@ export const appSettingsSchema = z.object({
   confirmCloseRunning: z.boolean(),
   warnOnMultilinePaste: z.boolean(),
   defaultShellId: z.string().min(1).nullable(),
-  explorerContextMenu: z.boolean()
+  explorerContextMenu: z.boolean(),
+  gpuRendering: z.boolean()
 })
 
 export const WORKSPACE_SCHEMA_VERSION = 2

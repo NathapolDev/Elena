@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
 import type { ElectronApplication, Page } from '@playwright/test'
+import { seedE2eSettings } from './settings'
 
 let app: ElectronApplication
 let page: Page
@@ -40,6 +41,7 @@ async function realDrag(page: Page, from: { x: number; y: number }, to: { x: num
 test.beforeAll(async () => {
   projectRoot = mkdtempSync(join(tmpdir(), 'elena-v-project-'))
   userData = mkdtempSync(join(tmpdir(), 'elena-v-userdata-'))
+  seedE2eSettings(userData)
   writeFileSync(join(projectRoot, 'MARKER.txt'), 'x')
   mkdirSync(join(projectRoot, 'preset-cwd'))
   app = await electron.launch({

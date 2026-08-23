@@ -1,6 +1,6 @@
 {
   "name": "elena",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Elena desktop workspace for running and supervising multiple CLI/AI agent terminal sessions",
   "main": "./out/main/index.js",
   "author": "NathapolDev",
@@ -28,6 +28,7 @@
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:perf": "vitest run --config vitest.perf.config.ts",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:watch": "vitest"
@@ -47,6 +48,7 @@
     "@vitest/coverage-v8": "^4.1.10",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-search": "^0.16.0",
+    "@xterm/addon-webgl": "^0.19.0",
     "@xterm/xterm": "^6.0.0",
     "electron": "^43.4.0",
     "electron-builder": "^26.0.0",

@@ -178,6 +178,25 @@ the rule is the only thing standing between you and the bug.
    slot silently falls back to xterm's own dark-tuned palette and only shows up as a wrong colour in one theme.
    `tests/theme-tokens.test.ts` asserts light/dark parity and that every slot the registry reads is declared in both.
 
+### Multiplicative paths
+
+Before adding work to a path that runs per byte, per event or per frame, write down its **frequency x cardinality**
+and multiply. The cardinality is never 1: panes, tabs, windows and terminals all scale independently, and the two
+worst performance bugs this codebase has had were both a correct-looking line on a path that ran 60 times a second
+times the number of open windows.
+
+- **Per-PTY-chunk** (`PtyManager.enqueue` / `flush`, `terminalBus.dispatchTerminalData`, `logger.write`) — x every
+  running session. Nothing here may do a blocking syscall, and no single send may be unbounded.
+- **Per-frame** (`updateRatio` and anything else driven by pointermove) — x every window that answers the resulting
+  event. Send at most once per animation frame, and let local state carry the drag.
+- **Per-event broadcast** (`broadcast` in `ipc/bus.ts`) — x every trusted window. If only one window can use the
+  payload, use `sendTo` instead; a renderer-side filter still paid for the clone.
+- **`workspace:changed`** — every window answers it with a full `workspace:list`, so it is x windows x workspaces
+  x terminals. Emitting it at pointer rate is what P1 was.
+
+`tests/hot-path.test.ts` holds the specific regressions this rule already prevented. `npm run test:perf` is the
+measurement; run it before and after touching any of the paths above.
+
 ### Dependencies
 
 - **No new runtime dependency without justification in the commit body.** There are three

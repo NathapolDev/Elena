@@ -9,7 +9,7 @@ describe('Windows update release configuration', () => {
     }
     const builder = readFileSync('electron-builder.yml', 'utf8')
 
-    expect(pkg.version).toBe('0.5.0')
+    expect(pkg.version).toBe('0.6.0')
     expect(pkg.dependencies['electron-updater']).toBe('6.8.9')
     expect(builder).toContain('provider: github')
     expect(builder).toContain('owner: NathapolDev')

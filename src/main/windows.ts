@@ -17,6 +17,7 @@
  * different role.
  */
 import { BrowserWindow } from 'electron'
+import type { WebContents } from 'electron'
 import { join } from 'node:path'
 import { broadcast, trustWebContents } from './ipc/bus'
 import { BROWSER_WINDOW_WEB_PREFERENCES } from './security/posture'
@@ -47,6 +48,15 @@ export function getMainWindow(): BrowserWindow | null {
 
 export function detachedTerminalIds(): string[] {
   return [...detached.keys()]
+}
+
+/**
+ * The window that actually draws a terminal — its detached window if it has
+ * one, the main window otherwise. Feeds the targeted `terminal:data` send (P2).
+ */
+export function webContentsForTerminal(terminalId: string): WebContents | null {
+  const window = detached.get(terminalId) ?? mainWindow
+  return window && !window.isDestroyed() ? window.webContents : null
 }
 
 /**

@@ -71,6 +71,6 @@ describe('appendWithCap', () => {
     const source = readFileSync(join(process.cwd(), 'src/main/pty/PtyManager.ts'), 'utf8')
 
     // Guards against the enqueue path being rewritten to bypass the cap.
-    expect(source).toMatch(/appendWithCap\(entry\.pending, entry\.pendingBytes, chunk, MAX_PENDING_BYTES\)/)
+    expect(source).toMatch(/appendWithCap\(entry\.pending, entry\.pendingBytes, chunk, MAX_PENDING_CHARS\)/)
   })
 })

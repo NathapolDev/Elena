@@ -165,6 +165,17 @@ export function SettingsDialog({ onClose }: { onClose: () => void }): React.JSX.
             />
             Confirm before closing a running session
           </label>
+          <label
+            style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}
+            title="Turn this off if terminals look wrong or feel slow over Remote Desktop or in a virtual machine."
+          >
+            <input
+              type="checkbox"
+              checked={settings.gpuRendering}
+              onChange={(event) => void updateSettings({ gpuRendering: event.target.checked })}
+            />
+            Draw terminals with the GPU
+          </label>
           <label style={{ display: 'flex', gap: 'var(--space-2)', alignItems: 'center' }}>
             <input
               type="checkbox"

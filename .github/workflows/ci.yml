@@ -55,6 +55,13 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+      # P8: the RELEASE.md perf criterion, measured. Runs after the build so a
+      # broken tree fails faster, and before packaging so a regression never
+      # reaches an installer. A hosted runner is slower than a dev machine, so
+      # the threshold is a ceiling, not a benchmark.
+      - name: Performance smoke
+        run: npm run test:perf
+
       - name: Package Windows application
         run: npm run build:win
 

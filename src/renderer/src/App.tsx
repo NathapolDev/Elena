@@ -11,6 +11,7 @@ import type { UpdateState } from '@shared/types'
 import { call, on } from './lib/api'
 import { dispatchTerminalData } from './lib/terminalBus'
 import {
+  applyGpuRenderingToAll,
   applyScrollbackToAll,
   applyTerminalTypographyToAll,
   applyThemeToAll,
@@ -67,6 +68,7 @@ export function App(): React.JSX.Element {
   const detachedTerminalIds = useStore((s) => s.detachedTerminalIds)
   const resolvedTheme = useStore((s) => s.resolvedTheme)
   const scrollback = useStore((s) => s.settings.scrollback)
+  const gpuRendering = useStore((s) => s.settings.gpuRendering)
   const terminalFontFamily = useStore((s) => s.settings.terminalFontFamily)
   const terminalFontSize = useStore((s) => s.settings.terminalFontSize)
   const terminalLineHeight = useStore((s) => s.settings.terminalLineHeight)
@@ -208,6 +210,10 @@ export function App(): React.JSX.Element {
   useEffect(() => {
     applyScrollbackToAll(scrollback)
   }, [scrollback])
+
+  useEffect(() => {
+    applyGpuRenderingToAll(gpuRendering)
+  }, [gpuRendering])
 
   useEffect(() => {
     applyTerminalTypographyToAll({

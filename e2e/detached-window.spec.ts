@@ -12,6 +12,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
+import { seedE2eSettings } from './settings'
 
 function shellPids(): Set<number> {
   const out = execSync(
@@ -29,6 +30,7 @@ function shellPids(): Set<number> {
 test('a write from one window does not delete a terminal the other created', async () => {
   const projectRoot = mkdtempSync(join(tmpdir(), 'elena-xwin-project-'))
   const userData = mkdtempSync(join(tmpdir(), 'elena-xwin-userdata-'))
+  seedE2eSettings(userData)
   writeFileSync(join(projectRoot, 'MARKER.txt'), 'x')
 
   const app = await electron.launch({
@@ -94,6 +96,7 @@ test('a write from one window does not delete a terminal the other created', asy
 test('quitting with a detached window open leaves no orphan shell', async () => {
   const projectRoot = mkdtempSync(join(tmpdir(), 'elena-orphan-project-'))
   const userData = mkdtempSync(join(tmpdir(), 'elena-orphan-userdata-'))
+  seedE2eSettings(userData)
   writeFileSync(join(projectRoot, 'MARKER.txt'), 'x')
 
   const before = shellPids()

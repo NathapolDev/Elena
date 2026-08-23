@@ -11,6 +11,7 @@ import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
 import type { ConsoleMessage, ElectronApplication, Page } from '@playwright/test'
 import { version as reactVersion } from 'react'
+import { seedE2eSettings } from './settings'
 
 let app: ElectronApplication
 let page: Page
@@ -38,6 +39,7 @@ function launchApp(): Promise<ElectronApplication> {
 test.beforeAll(async () => {
   projectRoot = mkdtempSync(join(tmpdir(), 'elena-e2e-project-'))
   userData = mkdtempSync(join(tmpdir(), 'elena-e2e-userdata-'))
+  seedE2eSettings(userData)
   writeFileSync(join(projectRoot, 'MARKER.txt'), 'do not delete me')
   mkdirSync(join(projectRoot, 'preset-cwd'))
 

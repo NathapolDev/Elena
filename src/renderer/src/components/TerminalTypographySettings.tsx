@@ -9,6 +9,7 @@ import {
   MIN_TERMINAL_LINE_HEIGHT,
   terminalFontStack
 } from '@shared/terminalTypography'
+import type { AppSettings } from '@shared/types'
 import { loadInstalledFontFamilies } from '../lib/terminalTypography'
 import { useStore } from '../state/store'
 
@@ -40,6 +41,33 @@ export function TerminalTypographySettings(): React.JSX.Element {
     } finally {
       setLoadingFonts(false)
     }
+  }
+
+  /*
+    P3: SettingsStore.update writes settings.json synchronously on the main
+    thread, so a per-keystroke onChange was one atomic file write per digit.
+    These commit once, when the field is left or Enter is pressed.
+
+    Uncontrolled on purpose. A controlled input whose value comes back from the
+    store cannot be typed into while the write is deferred, and a draft-state
+    mirror is a second copy of a value the store already owns. `key` remounts
+    the field when the setting changes from elsewhere — the reset button.
+  */
+  const commitNumber = (
+    raw: string,
+    min: number,
+    max: number,
+    integer: boolean,
+    apply: (value: number) => Partial<AppSettings>
+  ): void => {
+    const value = Number(raw)
+    if (!Number.isFinite(value) || value < min || value > max) return
+    if (integer && !Number.isInteger(value)) return
+    void updateSettings(apply(value))
+  }
+
+  const commitOnEnter = (event: React.KeyboardEvent<HTMLInputElement>): void => {
+    if (event.key === 'Enter') event.currentTarget.blur()
   }
 
   const selectedFamilyIsHidden =
@@ -110,21 +138,22 @@ export function TerminalTypographySettings(): React.JSX.Element {
           Font size
           <input
             id="terminal-font-size"
+            key={`size-${settings.terminalFontSize}`}
             type="number"
             min={MIN_TERMINAL_FONT_SIZE}
             max={MAX_TERMINAL_FONT_SIZE}
             step={1}
-            value={settings.terminalFontSize}
-            onChange={(event) => {
-              const value = Number(event.target.value)
-              if (
-                Number.isInteger(value) &&
-                value >= MIN_TERMINAL_FONT_SIZE &&
-                value <= MAX_TERMINAL_FONT_SIZE
-              ) {
-                void updateSettings({ terminalFontSize: value })
-              }
-            }}
+            defaultValue={settings.terminalFontSize}
+            onKeyDown={commitOnEnter}
+            onBlur={(event) =>
+              commitNumber(
+                event.target.value,
+                MIN_TERMINAL_FONT_SIZE,
+                MAX_TERMINAL_FONT_SIZE,
+                true,
+                (terminalFontSize) => ({ terminalFontSize })
+              )
+            }
           />
         </label>
 
@@ -132,21 +161,22 @@ export function TerminalTypographySettings(): React.JSX.Element {
           Line height
           <input
             id="terminal-line-height"
+            key={`line-height-${settings.terminalLineHeight}`}
             type="number"
             min={MIN_TERMINAL_LINE_HEIGHT}
             max={MAX_TERMINAL_LINE_HEIGHT}
             step={0.1}
-            value={settings.terminalLineHeight}
-            onChange={(event) => {
-              const value = Number(event.target.value)
-              if (
-                Number.isFinite(value) &&
-                value >= MIN_TERMINAL_LINE_HEIGHT &&
-                value <= MAX_TERMINAL_LINE_HEIGHT
-              ) {
-                void updateSettings({ terminalLineHeight: value })
-              }
-            }}
+            defaultValue={settings.terminalLineHeight}
+            onKeyDown={commitOnEnter}
+            onBlur={(event) =>
+              commitNumber(
+                event.target.value,
+                MIN_TERMINAL_LINE_HEIGHT,
+                MAX_TERMINAL_LINE_HEIGHT,
+                false,
+                (terminalLineHeight) => ({ terminalLineHeight })
+              )
+            }
           />
         </label>
       </div>
