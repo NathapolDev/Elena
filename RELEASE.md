@@ -5,7 +5,8 @@
 - [ ] Version and release notes are final.
 - [ ] `npm ci`, lint, typecheck, unit/integration tests, and Electron E2E pass on Windows 11 x64.
 - [ ] `npm audit --audit-level=critical` reports no critical vulnerabilities.
-- [ ] Ten concurrent noisy PTYs complete without an event-loop stall of 200 ms or more and all child processes terminate.
+- [ ] `npm run test:perf` passes: ten concurrent noisy PTYs, no event-loop stall of 200 ms or more, no child process
+      left behind. Record the printed numbers in the release notes and compare them against the previous release.
 - [ ] `npm run build:win` produces the installer and `win-unpacked` app.
 - [ ] The package contains `Elena-<version>-x64.exe`, its `.exe.blockmap`, and `latest.yml`.
 - [ ] The full Electron E2E suite passes with `ELENA_E2E_EXECUTABLE` set to the packaged executable.

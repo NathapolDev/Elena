@@ -13,7 +13,18 @@ import type { AppError, RuntimeSession, SessionStatus, TerminalConfig } from '@s
 
 /** Output is batched to avoid one IPC message per keystroke of output (risk: UI stalls). */
 const FLUSH_INTERVAL_MS = 16
-const MAX_PENDING_BYTES = 4 * 1024 * 1024
+/**
+ * Counts UTF-16 units, not bytes — `chunk.length` is what the arithmetic uses
+ * and renaming it is cheaper than making it lie.
+ */
+const MAX_PENDING_CHARS = 4 * 1024 * 1024
+/**
+ * P6: an upper bound on one IPC message. Hitting the pending cap used to mean a
+ * single 4 MB structured clone, which is exactly the stall the batching exists
+ * to avoid. A burst is delivered as several messages instead of one enormous
+ * one — the flush still coalesces, it just stops coalescing without limit.
+ */
+const MAX_SEND_CHARS = 256 * 1024
 const GRACEFUL_KILL_TIMEOUT_MS = 2000
 
 export type PtyEvents = {
@@ -249,7 +260,7 @@ export class PtyManager {
   }
 
   private enqueue(entry: Entry, chunk: string): void {
-    entry.pendingBytes = appendWithCap(entry.pending, entry.pendingBytes, chunk, MAX_PENDING_BYTES)
+    entry.pendingBytes = appendWithCap(entry.pending, entry.pendingBytes, chunk, MAX_PENDING_CHARS)
     if (entry.flushTimer) return
     entry.flushTimer = setTimeout(() => this.flush(entry), FLUSH_INTERVAL_MS)
   }
@@ -257,10 +268,22 @@ export class PtyManager {
   private flush(entry: Entry): void {
     entry.flushTimer = null
     if (entry.pending.length === 0) return
-    const payload = entry.pending.join('')
+    const pending = entry.pending
     entry.pending = []
     entry.pendingBytes = 0
-    this.events.onData(entry.config.id, payload)
+
+    // Batches are cut on boundaries node-pty already produced, never inside a
+    // chunk: slicing a joined string could split a surrogate pair and hand
+    // xterm a lone half. A single chunk larger than the cap is sent whole.
+    let batch = ''
+    for (const chunk of pending) {
+      if (batch !== '' && batch.length + chunk.length > MAX_SEND_CHARS) {
+        this.events.onData(entry.config.id, batch)
+        batch = ''
+      }
+      batch += chunk
+    }
+    if (batch !== '') this.events.onData(entry.config.id, batch)
   }
 
   private handleExit(entry: Entry, exitCode: number, signal: number | undefined): void {

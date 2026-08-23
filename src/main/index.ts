@@ -8,7 +8,7 @@
  */
 import { app, BrowserWindow, Menu, shell, session } from 'electron'
 import { fileURLToPath } from 'node:url'
-import { broadcast } from './ipc/bus'
+import { broadcast, sendTo } from './ipc/bus'
 import { registerIpcHandlers } from './ipc/register'
 import { PtyManager } from './pty/PtyManager'
 import { contentSecurityPolicy, isAllowedExternalUrl, isAllowedNavigationUrl } from './security/posture'
@@ -16,7 +16,8 @@ import {
   closeAllDetachedWindows,
   configureWindows,
   createMainWindow,
-  getMainWindow
+  getMainWindow,
+  webContentsForTerminal
 } from './windows'
 import { PresetStore } from './store/presetStore'
 import { SettingsStore } from './store/settingsStore'
@@ -46,7 +47,11 @@ const workspaces = new WorkspaceStore()
 const settings = new SettingsStore()
 const presets = new PresetStore()
 const pty = new PtyManager({
-  onData: (terminalId, chunk) => broadcast('terminal:data', { terminalId, chunk }),
+  // P2: output goes only to the window that draws this terminal. Status and
+  // exit stay broadcast — they are per-event, not per-16-ms, and the sidebar in
+  // the main window reports on terminals that are detached away from it.
+  onData: (terminalId, chunk) =>
+    sendTo(webContentsForTerminal(terminalId), 'terminal:data', { terminalId, chunk }),
   onStatus: (terminalId, status, pid) =>
     broadcast('terminal:status-changed', pid === undefined ? { terminalId, status } : { terminalId, status, pid }),
   onExit: (terminalId, exitCode, signal) =>

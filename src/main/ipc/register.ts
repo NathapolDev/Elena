@@ -35,6 +35,35 @@ export type Deps = {
   onRendererReady: () => void
 }
 
+/**
+ * P1: a divider drag sends a layout patch per animation frame, and every window
+ * answers `workspace:changed` with a full `workspace:list`. The disk write was
+ * already debounced (FR-03); the broadcast was not, so the drag cost N windows
+ * x a full workspace clone per frame.
+ *
+ * Only the layout-only patch is coalesced. Anything touching `terminals` still
+ * converges immediately, because a second window holding a stale copy is how a
+ * terminal silently disappears from workspaces.json.
+ */
+const LAYOUT_BROADCAST_MS = 120
+let layoutBroadcastTimer: NodeJS.Timeout | null = null
+
+function workspaceChanged(workspaceId: string | null): void {
+  if (layoutBroadcastTimer) {
+    clearTimeout(layoutBroadcastTimer)
+    layoutBroadcastTimer = null
+  }
+  broadcast('workspace:changed', { workspaceId })
+}
+
+function workspaceChangedSoon(workspaceId: string): void {
+  if (layoutBroadcastTimer) return
+  layoutBroadcastTimer = setTimeout(() => {
+    layoutBroadcastTimer = null
+    broadcast('workspace:changed', { workspaceId })
+  }, LAYOUT_BROADCAST_MS)
+}
+
 export function registerIpcHandlers(deps: Deps): void {
   const { workspaces, settings, presets, pty, updates } = deps
 
@@ -83,7 +112,7 @@ export function registerIpcHandlers(deps: Deps): void {
     }
     const workspace = workspaces.create(name, check.path)
     logger.info('workspace.created', { id: workspace.id })
-    broadcast('workspace:changed', { workspaceId: workspace.id })
+    workspaceChanged(workspace.id)
     return ok(workspace)
   })
 
@@ -100,7 +129,7 @@ export function registerIpcHandlers(deps: Deps): void {
     const existed = Boolean(existing)
     if (!existed) {
       logger.info('workspace.scratch-created', { id: workspace.id })
-      broadcast('workspace:changed', { workspaceId: workspace.id })
+      workspaceChanged(workspace.id)
     }
     return ok(workspace)
   })
@@ -117,7 +146,9 @@ export function registerIpcHandlers(deps: Deps): void {
         if (!survivors.has(terminal.id)) closeDetachedWindowFor(terminal.id)
       }
     }
-    broadcast('workspace:changed', { workspaceId: id })
+    const layoutOnly = Object.keys(patch).length === 1 && patch.layout !== undefined
+    if (layoutOnly) workspaceChangedSoon(id)
+    else workspaceChanged(id)
     return ok(updated)
   })
 
@@ -134,7 +165,7 @@ export function registerIpcHandlers(deps: Deps): void {
     workspaces.delete(id)
     // FR-05: app configuration only — nothing under projectRoot is touched.
     logger.info('workspace.deleted', { id })
-    broadcast('workspace:changed', { workspaceId: null })
+    workspaceChanged(null)
     return ok({ id })
   })
 
@@ -266,10 +297,14 @@ export function registerIpcHandlers(deps: Deps): void {
         return fail('INTERNAL', 'Could not update the Windows Explorer entry.', 'retry')
       }
     }
+    const before = resolvedTheme()
     const next = settings.update(patch)
     if (patch.themePreference) applyThemePreference(patch.themePreference)
     const theme = resolvedTheme()
-    broadcast('theme:changed', { resolvedTheme: theme })
+    // P3: the caller gets the resolved theme in this Result, so the broadcast
+    // exists for the *other* windows. Firing it on every settings write meant a
+    // font-size nudge repainted every terminal in every window for nothing.
+    if (theme !== before) broadcast('theme:changed', { resolvedTheme: theme })
     return ok({ settings: next, resolvedTheme: theme })
   })
 

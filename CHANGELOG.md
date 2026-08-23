@@ -5,6 +5,40 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-22
+
+Performance. This release adds no features on purpose: every ceiling it lifts is on a path that the next
+release's features will run on top of.
+
+### Changed
+
+- Terminals are drawn by the GPU. xterm now renders through WebGL instead of rebuilding DOM nodes per changed
+  cell, which is what the "ten busy sessions stay smooth" target runs into first. A machine with no usable GPU
+  context — a remote desktop, a VM, a driver Chromium refuses — falls back to the previous renderer on its own,
+  as does a terminal whose graphics context is lost while running.
+
+  Settings has a *Draw terminals with the GPU* toggle for turning it off, which takes effect immediately and
+  keeps scrollback, selection and focus. Turn it off if terminals look wrong or feel slow over Remote Desktop.
+- Terminal output is delivered only to the window showing that terminal. It used to be sent to every open
+  window, which then discarded what it did not draw, so three detached windows cost four times the work.
+- Dragging a split divider no longer asks every window to reload every workspace on every frame. The drag
+  itself is unchanged; what it sends behind the scenes is now paced to the screen's refresh rate, and other
+  windows catch up a fraction of a second after the drag settles.
+- Terminal font size and line height are saved when you leave the field or press Enter, rather than on every
+  keystroke — each keystroke used to be its own write to disk. Terminals are also no longer repainted for
+  settings changes that do not affect the theme.
+- A burst of output is delivered in bounded pieces instead of one very large message, and the buffer that
+  holds output for a pane that has not appeared yet is now limited by size rather than by a message count that
+  bounded nothing.
+- The application log no longer inspects the log file on every line it writes.
+
+### Added
+
+- `npm run test:perf` measures the release criterion — ten noisy terminals, event-loop delay, memory growth —
+  and runs in CI before the installer is built, so a slowdown fails the build instead of being noticed later.
+- `AGENTS.md` gains a *Multiplicative paths* rule, with `tests/hot-path.test.ts` holding the specific
+  regressions this release fixed.
+
 ## [0.5.0] - 2026-08-22
 
 ### Added

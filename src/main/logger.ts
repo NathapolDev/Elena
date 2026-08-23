@@ -20,6 +20,14 @@ type Level = 'info' | 'warn' | 'error'
 
 let stream: WriteStream | null = null
 let logPath = ''
+/**
+ * P5: bytes written since this stream was opened, seeded from the file on open.
+ * `rotateIfNeeded` used to run existsSync + statSync on every single line, two
+ * blocking syscalls on the thread that owns every PTY. The counter answers the
+ * common case with no syscall at all; the file is only measured when the stream
+ * is opened, which is once per process and once per rotation.
+ */
+let bytesWritten = 0
 
 function ensureStream(): WriteStream | null {
   if (stream) return stream
@@ -27,6 +35,7 @@ function ensureStream(): WriteStream | null {
     const dir = join(app.getPath('userData'), 'logs')
     if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
     logPath = join(dir, 'app.log')
+    bytesWritten = existsSync(logPath) ? statSync(logPath).size : 0
     stream = createWriteStream(logPath, { flags: 'a' })
     return stream
   } catch {
@@ -34,10 +43,9 @@ function ensureStream(): WriteStream | null {
   }
 }
 
-function rotateIfNeeded(): void {
-  if (!logPath || !existsSync(logPath)) return
+function rotateIfNeeded(incoming: number): void {
+  if (!logPath || bytesWritten + incoming < MAX_BYTES) return
   try {
-    if (statSync(logPath).size < MAX_BYTES) return
     stream?.end()
     stream = null
     for (let i = MAX_FILES - 1; i >= 1; i--) {
@@ -49,6 +57,7 @@ function rotateIfNeeded(): void {
       }
     }
     renameSync(logPath, `${logPath}.1`)
+    bytesWritten = 0
   } catch {
     /* logging must never break the app */
   }
@@ -91,8 +100,12 @@ function write(level: Level, event: string, meta?: Record<string, unknown>): voi
     if (level === 'error') console.error(line)
     else console.log(line)
   }
-  rotateIfNeeded()
+  const bytes = Buffer.byteLength(line) + 1
+  rotateIfNeeded(bytes)
+  // ensureStream seeds `bytesWritten` when it opens, so the first call after
+  // a rotation measures the file once and every call after that is arithmetic.
   ensureStream()?.write(`${line}\n`)
+  bytesWritten += bytes
 }
 
 export const logger = {
@@ -102,5 +115,6 @@ export const logger = {
   close: () => {
     stream?.end()
     stream = null
+    bytesWritten = 0
   }
 }

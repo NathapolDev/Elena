@@ -31,6 +31,22 @@ const REGISTER_PATH = join(SRC_MAIN, 'ipc/register.ts')
  */
 const KNOWN_UNBROADCAST: readonly string[] = []
 
+/**
+ * Every event `src/main` actually sends, however it sends it.
+ *
+ * `broadcast` reaches all trusted windows; `sendTo` reaches one. Both are real
+ * deliveries, so both count here — the point of the scan is that a declared
+ * event is not dead, not which function carries it.
+ */
+function sentEventChannels(source: string): Set<string> {
+  return new Set(
+    [
+      ...[...source.matchAll(/broadcast\(\s*'([^']+)'/g)],
+      ...[...source.matchAll(/sendTo\([^,]+,\s*'([^']+)'/g)]
+    ].map(([, channel]) => channel ?? '')
+  )
+}
+
 async function readMainSources(dir: string = SRC_MAIN): Promise<string> {
   const entries = await readdir(dir, { withFileTypes: true })
   const parts = await Promise.all(
@@ -82,27 +98,25 @@ describe('IPC contract', () => {
     expect(viaSchemas).toBe(total)
   })
 
-  it('broadcasts only declared events', async () => {
-    const source = await readMainSources()
-    const broadcast = new Set([...source.matchAll(/broadcast\(\s*'([^']+)'/g)].map(([, channel]) => channel))
+  it('sends only declared events', async () => {
+    const sent = sentEventChannels(await readMainSources())
 
-    for (const channel of broadcast) {
-      expect(EVENT_CHANNELS, `broadcast('${channel}') is not in EVENT_CHANNELS`).toContain(channel)
+    for (const channel of sent) {
+      expect(EVENT_CHANNELS, `'${channel}' is sent but is not in EVENT_CHANNELS`).toContain(channel)
     }
   })
 
-  it('either broadcasts every declared event or records it as a known exception', async () => {
-    const source = await readMainSources()
-    const broadcast = new Set([...source.matchAll(/broadcast\(\s*'([^']+)'/g)].map(([, channel]) => channel))
+  it('either sends every declared event or records it as a known exception', async () => {
+    const sent = sentEventChannels(await readMainSources())
 
     const dead = EVENT_CHANNELS.filter(
-      (channel) => !broadcast.has(channel) && !KNOWN_UNBROADCAST.includes(channel)
+      (channel) => !sent.has(channel) && !KNOWN_UNBROADCAST.includes(channel)
     )
     expect(dead, 'declared events that nothing in src/main sends').toEqual([])
 
     // And the reverse: an exception that started working should be un-listed.
-    const revived = KNOWN_UNBROADCAST.filter((channel) => broadcast.has(channel))
-    expect(revived, 'KNOWN_UNBROADCAST entries that are now broadcast — remove them').toEqual([])
+    const revived = KNOWN_UNBROADCAST.filter((channel) => sent.has(channel))
+    expect(revived, 'KNOWN_UNBROADCAST entries that are now sent — remove them').toEqual([])
   })
 })
 

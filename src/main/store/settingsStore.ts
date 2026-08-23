@@ -21,7 +21,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultShellId: null,
   // The installer registers the Explorer verb, so the stored default has to
   // agree with it or the first settings write would silently remove it.
-  explorerContextMenu: true
+  explorerContextMenu: true,
+  // migrateSettingsFile fills this in for a file written before it existed, so
+  // no SETTINGS_SCHEMA_VERSION bump: the transform that would justify one is
+  // already the one that runs on every load.
+  gpuRendering: true
 }
 
 type SettingsFile = { schemaVersion: number; settings: AppSettings }

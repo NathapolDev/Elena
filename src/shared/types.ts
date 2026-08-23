@@ -97,6 +97,13 @@ export type AppSettings = {
   defaultShellId: string | null
   /** Windows only: whether the "Open in Elena" Explorer verb is registered. */
   explorerContextMenu: boolean
+  /**
+   * Draw terminals with the GPU (xterm's WebGL renderer) instead of the DOM.
+   * On by default. Off is the honest choice on a machine with no usable GL
+   * context — a remote desktop, a VM, a blocklisted driver — where the software
+   * GL fallback is slower than the DOM renderer it replaced.
+   */
+  gpuRendering: boolean
 }
 
 export type ResolvedTheme = 'light' | 'dark'

@@ -128,8 +128,31 @@ const DEFAULT_SETTINGS: AppSettings = {
   scrollback: 10_000,
   confirmCloseRunning: true,
   warnOnMultilinePaste: true,
+  gpuRendering: true,
   defaultShellId: null,
   explorerContextMenu: true
+}
+
+/**
+ * One `workspace:update` per animation frame, carrying the newest layout.
+ * Module scope, not store state: this is transport pacing, and holding it in the
+ * store would make every drag frame a state update of its own.
+ */
+let pendingLayout: { workspaceId: string; layout: LayoutNode | null } | null = null
+let layoutFrame: number | null = null
+
+function scheduleLayoutSend(workspaceId: string, layout: LayoutNode | null): void {
+  pendingLayout = { workspaceId, layout }
+  if (layoutFrame !== null) return
+  layoutFrame = requestAnimationFrame(() => {
+    layoutFrame = null
+    const next = pendingLayout
+    pendingLayout = null
+    if (!next) return
+    void call('workspace:update', { id: next.workspaceId, patch: { layout: next.layout } }).catch(() => {
+      /* transient; the next drag frame will retry */
+    })
+  })
 }
 
 export const useStore = create<State>((set, get) => ({
@@ -643,10 +666,12 @@ export const useStore = create<State>((set, get) => ({
     set((s) => ({
       workspaces: s.workspaces.map((w) => (w.id === workspace.id ? { ...w, layout } : w))
     }))
-    // Main debounces the disk write (FR-03), so a drag is safe to send per frame.
-    void call('workspace:update', { id: workspace.id, patch: { layout } }).catch(() => {
-      /* transient; the next drag will retry */
-    })
+    // P1: local state above is what the drag renders, so the send only has to
+    // reach main often enough to survive a crash mid-drag. A high-polling mouse
+    // fires pointermove well above the refresh rate; one send per frame is the
+    // ceiling, and the frame the pointer stops on is always the one that lands.
+    // Main debounces the disk write (FR-03) and coalesces the echo broadcast.
+    scheduleLayoutSend(workspace.id, layout)
   },
 
   applyStatus(terminalId, status, pid) {

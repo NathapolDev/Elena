@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { _electron as electron, expect, test } from '@playwright/test'
 import type { ConsoleMessage, ElectronApplication, Page } from '@playwright/test'
+import { seedE2eSettings } from './settings'
 
 /** Shipped in the app, so it is the default with nothing installed. */
 const BUNDLED_FONT = '0xProto Nerd Font Mono'
@@ -19,6 +20,7 @@ function launchApp(): Promise<ElectronApplication> {
 test.beforeAll(async () => {
   projectRoot = mkdtempSync(join(tmpdir(), 'elena-typography-project-'))
   userData = mkdtempSync(join(tmpdir(), 'elena-typography-userdata-'))
+  seedE2eSettings(userData)
   app = await launchApp()
   page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
