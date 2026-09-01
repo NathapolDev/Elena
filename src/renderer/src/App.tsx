@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChatCircleIcon } from '@phosphor-icons/react/ChatCircle'
 import { FolderIcon } from '@phosphor-icons/react/Folder'
 import { GearSixIcon } from '@phosphor-icons/react/GearSix'
+import { GitDiffIcon } from '@phosphor-icons/react/GitDiff'
 import { InfoIcon } from '@phosphor-icons/react/Info'
 import { ListIcon } from '@phosphor-icons/react/List'
 import { PlusIcon } from '@phosphor-icons/react/Plus'
@@ -32,6 +33,7 @@ import { ConfirmDialog } from './components/ConfirmDialog'
 import { CommandPalette } from './components/CommandPalette'
 import type { Command } from './components/CommandPalette'
 import { Toasts } from './components/Toasts'
+import { ChangesDialog } from './components/ChangesDialog'
 
 type Modal =
   | 'none'
@@ -42,6 +44,7 @@ type Modal =
   | 'settings'
   | 'about'
   | 'delete-workspace'
+  | 'changes'
   | 'palette'
 
 /**
@@ -571,6 +574,16 @@ export function App(): React.JSX.Element {
         </button>
         <button
           type="button"
+          className="button changes-trigger"
+          onClick={() => setModal('changes')}
+          disabled={!workspace}
+          aria-label="View changed files"
+          title="View changed files"
+        >
+          <GitDiffIcon size={18} /> <span>Changes</span>
+        </button>
+        <button
+          type="button"
           className="icon-button"
           onClick={() => setModal('about')}
           aria-label="About Elena"
@@ -692,6 +705,9 @@ export function App(): React.JSX.Element {
           onCheck={async () => setUpdateState(await call('app:update-check'))}
           onClose={() => setModal('none')}
         />
+      )}
+      {modal === 'changes' && workspace && (
+        <ChangesDialog workspace={workspace} onClose={() => setModal('none')} />
       )}
       {modal === 'palette' && <CommandPalette commands={commands} onClose={() => setModal('none')} />}
       {modal === 'delete-workspace' && workspace && (

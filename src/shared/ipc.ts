@@ -11,6 +11,8 @@ import type {
   AppInfo,
   AppSettings,
   GitBranchInfo,
+  GitChangesSnapshot,
+  GitFileDiff,
   LayoutNode,
   ResolvedTheme,
   Result,
@@ -97,6 +99,10 @@ export type Commands = {
 
   /** Null when the folder is not inside a git working tree. */
   'git:branch': { req: { path: string }; res: GitBranchInfo | null }
+  /** Uncommitted files under the stored workspace project root. */
+  'git:changes': { req: { workspaceId: string }; res: GitChangesSnapshot | null }
+  'git:diff': { req: { workspaceId: string; path: string }; res: GitFileDiff }
+  'file:open-in-vscode': { req: { workspaceId: string; path: string }; res: { opened: true } }
 
   'shell:list': { req: void; res: ShellInfo[] }
   'settings:get': { req: void; res: { settings: AppSettings; resolvedTheme: ResolvedTheme } }
@@ -175,6 +181,9 @@ export const COMMAND_CHANNELS = [
   'preset:delete',
   'preset:reset',
   'git:branch',
+  'git:changes',
+  'git:diff',
+  'file:open-in-vscode',
   'shell:list',
   'settings:get',
   'settings:update',

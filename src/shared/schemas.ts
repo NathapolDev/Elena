@@ -40,6 +40,18 @@ export const layoutNodeSchema: z.ZodType<LayoutNode> = z.lazy(() =>
 /** Env var *names* only. Values live in the OS environment and are never stored (FR-18). */
 export const envAllowlistSchema = z.array(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/)).max(64)
 
+/** A renderer may name a workspace-relative file, never an arbitrary OS path. */
+export const relativeWorkspacePathSchema = z
+  .string()
+  .min(1)
+  .max(4096)
+  .refine((value) => !value.includes('\0'), 'Path contains a NUL byte')
+  .refine((value) => !/^(?:[A-Za-z]:[\\/]|[\\/])/.test(value), 'Path must be relative')
+  .refine(
+    (value) => !value.split(/[\\/]+/).some((part) => part === '..'),
+    'Path cannot leave the workspace'
+  )
+
 export const terminalConfigSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1).max(120),
@@ -185,6 +197,15 @@ export const requestSchemas = {
   'preset:reset': z.void().or(z.undefined()),
 
   'git:branch': z.object({ path: z.string().min(1).max(1024) }),
+  'git:changes': z.object({ workspaceId: z.string().min(1) }),
+  'git:diff': z.object({
+    workspaceId: z.string().min(1),
+    path: relativeWorkspacePathSchema
+  }),
+  'file:open-in-vscode': z.object({
+    workspaceId: z.string().min(1),
+    path: relativeWorkspacePathSchema
+  }),
 
   'shell:list': z.void().or(z.undefined()),
   'settings:get': z.void().or(z.undefined()),

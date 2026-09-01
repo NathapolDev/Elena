@@ -77,6 +77,46 @@ export type GitBranchInfo = {
   detached: boolean
 }
 
+export type GitChangeKind =
+  | 'modified'
+  | 'added'
+  | 'deleted'
+  | 'renamed'
+  | 'copied'
+  | 'untracked'
+  | 'conflicted'
+
+/** Runtime Git state. Paths are always relative to the workspace project root. */
+export type GitChangeEntry = {
+  path: string
+  previousPath?: string
+  kind: GitChangeKind
+  staged: boolean
+  unstaged: boolean
+  /** False for deleted files, directories and paths that fail the workspace jail. */
+  openable: boolean
+}
+
+export type GitChangesSnapshot = {
+  repository: GitBranchInfo
+  files: GitChangeEntry[]
+  /** True when the bounded status result omitted additional entries. */
+  truncated: boolean
+}
+
+export type GitDiffSection = {
+  source: 'staged' | 'working-tree' | 'untracked'
+  patch: string
+  binary: boolean
+  truncated: boolean
+}
+
+export type GitFileDiff = {
+  path: string
+  previousPath?: string
+  sections: GitDiffSection[]
+}
+
 export type ShellInfo = {
   id: string
   name: string

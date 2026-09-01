@@ -55,6 +55,12 @@
   --text-secondary: #abb2bf;
   --focus-ring: #61afef;
   --shadow-pane: 0 8px 24px rgb(0 0 0 / 38%);
+  --diff-added-bg: rgb(152 195 121 / 15%);
+  --diff-added-text: #b7d99e;
+  --diff-removed-bg: rgb(224 108 117 / 15%);
+  --diff-removed-text: #ef9da4;
+  --diff-hunk-bg: rgb(97 175 239 / 14%);
+  --diff-hunk-text: #8fc8f5;
 
   --term-bg: #282c34;
   --term-fg: #dcdfe4;
@@ -101,6 +107,12 @@
   --text-secondary: #4a545e;
   --focus-ring: #0b5f8a;
   --shadow-pane: 0 8px 24px rgb(31 35 40 / 12%);
+  --diff-added-bg: rgb(18 105 47 / 10%);
+  --diff-added-text: #12692f;
+  --diff-removed-bg: rgb(185 22 38 / 9%);
+  --diff-removed-text: #a40e26;
+  --diff-hunk-bg: rgb(21 88 196 / 9%);
+  --diff-hunk-text: #1558c4;
 
   --term-bg: #ffffff;
   --term-fg: #1f2328;

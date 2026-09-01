@@ -10,6 +10,10 @@ export type PathCheck =
   | { ok: true; path: string; isDirectory: boolean }
   | { ok: false; reason: 'not-absolute' | 'missing' | 'not-a-directory' | 'outside-root' | 'denied' }
 
+export type FileCheck =
+  | { ok: true; path: string }
+  | { ok: false; reason: 'missing' | 'not-a-file' | 'outside-root' | 'denied' }
+
 /** True when `child` is `parent` or lives underneath it. Case-insensitive on win32. */
 export function isInside(parent: string, child: string): boolean {
   if (isSamePath(parent, child)) return true
@@ -69,6 +73,30 @@ export function validateDirectory(input: string, mustBeInside?: string): PathChe
     if (!isInside(canonicalRoot, canonicalTarget)) return { ok: false, reason: 'outside-root' }
   }
   return { ok: true, path: canonicalTarget, isDirectory: true }
+}
+
+/** Resolves an existing regular file and proves its real path stays in the workspace jail. */
+export function validateFile(input: string, mustBeInside: string): FileCheck {
+  if (!input || input.includes('\0')) return { ok: false, reason: 'missing' }
+
+  const target = isAbsolute(input) ? resolve(input) : resolve(mustBeInside, input)
+  let stats
+  try {
+    stats = statSync(target)
+  } catch {
+    return { ok: false, reason: 'missing' }
+  }
+  if (!stats.isFile()) return { ok: false, reason: 'not-a-file' }
+
+  try {
+    accessSync(target, constants.R_OK)
+    const canonicalRoot = realpathSync.native(resolve(mustBeInside))
+    const canonicalTarget = realpathSync.native(target)
+    if (!isInside(canonicalRoot, canonicalTarget)) return { ok: false, reason: 'outside-root' }
+    return { ok: true, path: canonicalTarget }
+  } catch {
+    return { ok: false, reason: 'denied' }
+  }
 }
 
 /**

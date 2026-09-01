@@ -2,18 +2,20 @@
  * Wires the IPC contract to the stores and the PTY manager. This is the only
  * place where renderer intent turns into filesystem or process effects.
  */
-import { app, dialog } from 'electron'
+import { app, dialog, shell } from 'electron'
 import type { BrowserWindow } from 'electron'
 import { requestSchemas } from '@shared/schemas'
 import { broadcast, fail, ok, registerCommand } from './bus'
 import { readGitBranch } from '../git/branch'
+import { GitPathNotChangedError, readGitChanges, readGitFileDiff } from '../git/changes'
 import { discoverShells } from '../pty/shells'
-import { validateDirectory } from '../security/paths'
+import { resolveExecutable, validateDirectory, validateFile } from '../security/paths'
 import {
   explorerContextMenuSupported,
   registerExplorerContextMenu,
   unregisterExplorerContextMenu
 } from '../shell/explorerContextMenu'
+import { vscodeUrlForFile } from '../shell/vscode'
 import { applyThemePreference, resolvedTheme } from '../theme'
 import { closeDetachedWindowFor, detachTerminal, detachedTerminalIds, reattachTerminal } from '../windows'
 import { logger } from '../logger'
@@ -269,6 +271,52 @@ export function registerIpcHandlers(deps: Deps): void {
   // Read-only and best effort: a folder outside a repo is a `null`, not an
   // error, so the pane header simply shows no branch.
   registerCommand('git:branch', requestSchemas['git:branch'], ({ path }) => ok(readGitBranch(path)))
+
+  registerCommand('git:changes', requestSchemas['git:changes'], async ({ workspaceId }) => {
+    const workspace = workspaces.get(workspaceId)
+    if (!workspace) return fail('NOT_FOUND', 'Workspace not found.')
+    const root = validateDirectory(workspace.projectRoot)
+    if (!root.ok) return fail('INVALID_CWD', `Project folder is not usable (${root.reason}).`)
+    const git = resolveExecutable('git')
+    if (!git) return fail('EXECUTABLE_NOT_FOUND', 'Git is not installed or is not available on PATH.')
+    return ok(await readGitChanges(git, root.path))
+  })
+
+  registerCommand('git:diff', requestSchemas['git:diff'], async ({ workspaceId, path }) => {
+    const workspace = workspaces.get(workspaceId)
+    if (!workspace) return fail('NOT_FOUND', 'Workspace not found.')
+    const root = validateDirectory(workspace.projectRoot)
+    if (!root.ok) return fail('INVALID_CWD', `Project folder is not usable (${root.reason}).`)
+    const git = resolveExecutable('git')
+    if (!git) return fail('EXECUTABLE_NOT_FOUND', 'Git is not installed or is not available on PATH.')
+    try {
+      return ok(await readGitFileDiff(git, root.path, path))
+    } catch (error) {
+      if (error instanceof GitPathNotChangedError) {
+        return fail('NOT_FOUND', 'The file is no longer changed.', 'retry')
+      }
+      throw error
+    }
+  })
+
+  registerCommand(
+    'file:open-in-vscode',
+    requestSchemas['file:open-in-vscode'],
+    async ({ workspaceId, path }) => {
+      const workspace = workspaces.get(workspaceId)
+      if (!workspace) return fail('NOT_FOUND', 'Workspace not found.')
+      const file = validateFile(path, workspace.projectRoot)
+      if (!file.ok) {
+        return fail('NOT_FOUND', `File cannot be opened (${file.reason}).`)
+      }
+      try {
+        await shell.openExternal(vscodeUrlForFile(file.path))
+        return ok({ opened: true as const })
+      } catch {
+        return fail('EXECUTABLE_NOT_FOUND', 'VS Code could not be opened.')
+      }
+    }
+  )
 
   /* ---------- shells, settings, dialogs ---------- */
 

@@ -58,6 +58,21 @@ describe('terminal:create payload', () => {
   })
 })
 
+describe.each(['git:diff', 'file:open-in-vscode'] as const)('%s payload', (channel) => {
+  const schema = requestSchemas[channel]
+
+  it('accepts a workspace-relative path', () => {
+    expect(schema.safeParse({ workspaceId: 'w1', path: 'src/file name.ts' }).success).toBe(true)
+  })
+
+  it.each(['../secret.txt', 'C:\\secret.txt', '/secret.txt', '\\\\server\\share\\file']) (
+    'rejects a path outside the workspace: %s',
+    (path) => {
+      expect(schema.safeParse({ workspaceId: 'w1', path }).success).toBe(false)
+    }
+  )
+})
+
 describe('preset payload', () => {
   const schema = requestSchemas['preset:create']
 
