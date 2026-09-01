@@ -48,7 +48,7 @@ jobs:
       # writes beside it is what shows the terminal state behind the failure.
       - name: Upload end-to-end failure context
         if: failure()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: e2e-failure-context
           path: test-results/
@@ -59,7 +59,7 @@ jobs:
         run: npm run build:win
 
       - name: Upload Windows package
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: elena-windows
           path: |
