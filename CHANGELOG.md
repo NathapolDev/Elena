@@ -5,7 +5,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
-## [0.6.0] - 2026-08-22
+## [0.6.0] - 2026-09-01
 
 Performance. This release adds no features on purpose: every ceiling it lifts is on a path that the next
 release's features will run on top of.
@@ -38,6 +38,23 @@ release's features will run on top of.
   and runs in CI before the installer is built, so a slowdown fails the build instead of being noticed later.
 - `AGENTS.md` gains a *Multiplicative paths* rule, with `tests/hot-path.test.ts` holding the specific
   regressions this release fixed.
+
+### Release measurements
+
+`npm run test:perf`, ten noisy PTYs over an 8 s window. The criterion is no event-loop stall of 200 ms or
+more. There is no 0.5.0 baseline to compare against — the measurement did not exist before this release, so
+these numbers are the baseline 0.7.0 will be read against.
+
+| | Windows 11 x64 dev machine | `windows-latest` CI runner |
+| --- | --- | --- |
+| Output | 5.6 MB in 3334 sends | 2.2 MB in 3241 sends |
+| Largest single send | 4 KB | 2 KB |
+| Event-loop p99 | 16.2 ms | 21.5 ms |
+| Event-loop max | 17.3 ms | 25.4 ms |
+| RSS growth | 140.6 MB | 120.0 MB |
+
+Both runs left no child process behind. The largest send sits far under the 256 KB per-send cap, so the cap
+is a ceiling this workload never reaches rather than something these numbers exercise.
 
 ## [0.5.0] - 2026-08-22
 
