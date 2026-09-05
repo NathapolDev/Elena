@@ -1,6 +1,6 @@
 {
   "name": "elena",
-  "version": "0.6.0",
+  "version": "0.6.5",
   "description": "Elena desktop workspace for running and supervising multiple CLI/AI agent terminal sessions",
   "main": "./out/main/index.js",
   "author": "NathapolDev",

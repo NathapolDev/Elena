@@ -1,4 +1,4 @@
-# View Diff — unreleased
+# View Diff — 0.6.5
 
 Review uncommitted changes inside Elena, switch between unified and side-by-side views, and open files in VS Code.
 The Changes button displays added/deleted line totals across staged, unstaged and untracked text files.
@@ -52,6 +52,6 @@ The full 33-test Electron E2E suite passed, including hidden headers and a 20,00
 2,000 display lines. The final large-preview flow took 1,209 ms including refresh, Git and browser assertions;
 it is an end-to-end observation, not a frame-time measurement.
 
-Prepared for PR review, not a published release. Keep the changelog under Unreleased until the release version
-and date are selected. The final Windows installer build, packaged-app E2E, audit, signing/clean-account checks
-and GitHub CI remain release gates in `RELEASE.md`.
+Prepared as the 0.6.5 release candidate. PR #21 passed GitHub CI on the release feature commit. The tag build,
+final Windows installer, packaged-app E2E, audit, signing/clean-account checks and GitHub release publication
+remain release gates in `RELEASE.md`.
