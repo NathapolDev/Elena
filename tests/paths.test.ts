@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
@@ -71,7 +71,7 @@ describe('validateDirectory', () => {
 
 describe('validateFile', () => {
   it('resolves a readable file inside the root', () => {
-    expect(validateFile('a-file.txt', root)).toEqual({ ok: true, path: filePath })
+    expect(validateFile('a-file.txt', root)).toEqual({ ok: true, path: realpathSync.native(filePath) })
   })
 
   it('rejects missing files and directories', () => {
