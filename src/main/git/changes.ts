@@ -7,7 +7,7 @@
  */
 import { spawn } from 'node:child_process'
 import { statSync } from 'node:fs'
-import { open } from 'node:fs/promises'
+import { lstat, open } from 'node:fs/promises'
 import { relative, resolve, sep } from 'node:path'
 import type {
   GitChangeEntry,
@@ -55,7 +55,7 @@ function runGit(
         shell: false,
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, GIT_PAGER: 'cat', GIT_TERMINAL_PROMPT: '0' }
+        env: { ...process.env, GIT_PAGER: 'cat', GIT_TERMINAL_PROMPT: '0', GIT_NO_LAZY_FETCH: '1' }
       }
     )
     const stdout: Buffer[] = []
@@ -145,7 +145,7 @@ export function parseGitStatus(
 ): GitChangeEntry[] {
   const records = output.toString('utf8').split('\0')
   if (output.length > 0 && output[output.length - 1] !== 0) records.pop()
-  const files: GitChangeEntry[] = []
+  const files = new Map<string, GitChangeEntry>()
 
   for (let index = 0; index < records.length; index += 1) {
     const record = records[index]
@@ -163,17 +163,27 @@ export function parseGitStatus(
       ? toWorkspacePath(repositoryRoot, workspaceRoot, rawPreviousPath) ?? undefined
       : undefined
 
-    files.push({
+    const entry: GitChangeEntry = {
       path,
       ...(previousPath ? { previousPath } : {}),
       kind: classify(x, y),
       staged: x !== ' ' && x !== '?',
       unstaged: x === '?' || y !== ' ',
+      ...(x === '?' ? { untracked: true } : {}),
       openable: checkOpenable && isOpenable(workspaceRoot, path)
-    })
+    }
+    const existing = files.get(path)
+    files.set(path, existing ? {
+      ...existing,
+      kind: existing.kind === 'conflicted' || entry.kind === 'conflicted' ? 'conflicted' : 'modified',
+      staged: existing.staged || entry.staged,
+      unstaged: existing.unstaged || entry.unstaged,
+      untracked: existing.untracked || entry.untracked,
+      openable: existing.openable || entry.openable
+    } : entry)
   }
 
-  return files.toSorted((a, b) => a.path.localeCompare(b.path))
+  return Array.from(files.values()).toSorted((a, b) => a.path.localeCompare(b.path))
 }
 
 function workspacePathspec(repositoryRoot: string, workspaceRoot: string): string {
@@ -260,13 +270,17 @@ async function readChangeSummary(
   // per summary and 2 MiB per file; never spawn a Git process per loose file.
   let remaining = 16 * 1024 * 1024
   for (const change of snapshot.files) {
-    if (change.kind !== 'untracked') continue
+    if (!change.untracked) continue
     const file = validateFile(change.path, workspaceRoot)
     if (!file.ok || remaining <= 0) {
       summary.incomplete = true
       continue
     }
     try {
+      if ((await lstat(resolve(workspaceRoot, change.path))).isSymbolicLink()) {
+        summary.additions += 1
+        continue
+      }
       const handle = await open(file.path, 'r')
       try {
         const size = (await handle.stat()).size
@@ -347,33 +361,26 @@ export async function readGitFileDiff(
   const sections: GitDiffSection[] = []
   let remaining = DIFF_OUTPUT_LIMIT
 
-  if (change.kind === 'untracked') {
+  if (change.staged) {
+    const section = await diffSection(executable, repositoryRoot, prefix, ['--cached', '--', ...paths], 'staged', remaining)
+    sections.push(section)
+    remaining -= Buffer.byteLength(section.patch)
+  }
+  if (change.untracked && remaining > 0) {
     const file = validateFile(change.path, workspaceRoot)
     if (!file.ok) throw new GitPathNotChangedError()
     const section = await diffSection(
       executable,
       repositoryRoot,
       '.',
-      ['--no-index', '--', 'NUL', file.path],
+      ['--no-index', '--', 'NUL', resolve(workspaceRoot, change.path)],
       'untracked',
       remaining,
       [0, 1]
     )
     sections.push(section)
-  } else {
-    if (change.staged && remaining > 0) {
-      const section = await diffSection(
-        executable,
-        repositoryRoot,
-        prefix,
-        ['--cached', '--', ...paths],
-        'staged',
-        remaining
-      )
-      sections.push(section)
-      remaining -= Buffer.byteLength(section.patch)
-    }
-    if (change.unstaged && remaining > 0) {
+  } else if (change.unstaged) {
+    if (remaining > 0) {
       const section = await diffSection(
         executable,
         repositoryRoot,
@@ -383,8 +390,8 @@ export async function readGitFileDiff(
         remaining
       )
       sections.push(section)
-    } else if (change.unstaged) {
-      sections.push({ source: 'working-tree', patch: '', binary: false, truncated: true })
+    } else {
+      sections.push({ source: change.untracked ? 'untracked' : 'working-tree', patch: '', binary: false, truncated: true })
     }
   }
 

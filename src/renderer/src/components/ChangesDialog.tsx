@@ -32,7 +32,7 @@ const SOURCE_LABEL: Record<GitDiffSection['source'], string> = {
 
 function statusLabel(change: GitChangeEntry): string {
   const label = change.kind[0]?.toUpperCase() + change.kind.slice(1)
-  const areas = [change.staged ? 'staged' : '', change.unstaged ? 'unstaged' : ''].filter(Boolean)
+  const areas = [change.staged ? 'staged' : '', change.untracked ? 'untracked' : change.unstaged ? 'unstaged' : ''].filter(Boolean)
   return areas.length > 0 ? `${label} · ${areas.join(' + ')}` : label
 }
 

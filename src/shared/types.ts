@@ -93,6 +93,8 @@ export type GitChangeEntry = {
   kind: GitChangeKind
   staged: boolean
   unstaged: boolean
+  /** An untracked working-tree entry can coexist with a staged deletion at this path. */
+  untracked?: boolean
   /** False for deleted files, directories and paths that fail the workspace jail. */
   openable: boolean
 }

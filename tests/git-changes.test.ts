@@ -1,10 +1,16 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import * as childProcess from 'node:child_process'
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { parseGitNumstat, parseGitStatus, readGitChanges, readGitFileDiff } from '../src/main/git/changes'
 import { resolveExecutable } from '../src/main/security/paths'
+
+vi.mock('node:child_process', async (importOriginal) => {
+  const actual = await importOriginal<typeof childProcess>()
+  return { ...actual, spawn: vi.fn(actual.spawn) }
+})
 
 const root = mkdtempSync(join(tmpdir(), 'elena-git-changes-'))
 const git = resolveExecutable('git')
@@ -22,10 +28,13 @@ beforeAll(() => {
   writeFileSync(join(root, 'modified.txt'), 'before\n')
   writeFileSync(join(root, 'deleted.txt'), 'delete me\n')
   writeFileSync(join(root, 'old-name.txt'), 'rename me\n')
+  writeFileSync(join(root, 'removed-from-index.txt'), 'old indexed content\n')
   mkdirSync(join(root, 'nested'))
   writeFileSync(join(root, 'nested', 'inside.txt'), 'inside before\n')
   run('add', '.')
   run('commit', '-m', 'fixture')
+  run('rm', '--cached', 'removed-from-index.txt')
+  writeFileSync(join(root, 'removed-from-index.txt'), 'replacement\nsecond line\n')
 
   writeFileSync(join(root, 'modified.txt'), 'before\nafter\n')
   rmSync(join(root, 'deleted.txt'))
@@ -70,9 +79,35 @@ describe('Git status parsing', () => {
 })
 
 describe.runIf(Boolean(git))('Git changes service', () => {
+  it('disables promisor lazy fetching for every Git child, overriding the inherited environment', async () => {
+    const spy = vi.mocked(childProcess.spawn)
+    spy.mockClear()
+    vi.stubEnv('GIT_NO_LAZY_FETCH', '0')
+    try {
+      await readGitChanges(git!, root)
+      expect(spy.mock.calls.length).toBeGreaterThan(0)
+      for (const invocation of spy.mock.calls) {
+        expect(invocation[2]).toMatchObject({ env: { GIT_NO_LAZY_FETCH: '1' } })
+      }
+    } finally {
+      spy.mockClear()
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('combines staged deletion and untracked replacement into one selectable file with both diffs', async () => {
+    const snapshot = await readGitChanges(git!, root)
+    const entries = snapshot?.files.filter((file) => file.path === 'removed-from-index.txt')
+    expect(entries).toHaveLength(1)
+    expect(entries?.[0]).toMatchObject({ staged: true, unstaged: true, untracked: true })
+    const diff = await readGitFileDiff(git!, root, 'removed-from-index.txt')
+    expect(diff.sections.map((section) => section.source)).toEqual(['staged', 'untracked'])
+    expect(diff.sections[0]?.patch).toContain('-old indexed content')
+    expect(diff.sections[1]?.patch).toContain('+replacement')
+  })
   it('sums staged, unstaged and untracked text lines, ignoring empty and binary files', async () => {
     const snapshot = await readGitChanges(git!, root)
-    expect(snapshot?.summary).toEqual({ additions: 7, deletions: 2, incomplete: false })
+    expect(snapshot?.summary).toEqual({ additions: 9, deletions: 3, incomplete: false })
   })
 
   it('can skip summary work when only loading a file preview', async () => {
@@ -123,5 +158,23 @@ describe.runIf(Boolean(git))('Git changes service', () => {
     writeFileSync(join(largeRoot, 'large.txt'), Buffer.alloc(2 * 1024 * 1024 + 1, 65))
     const snapshot = await readGitChanges(git!, largeRoot)
     expect(snapshot?.summary).toEqual({ additions: 0, deletions: 0, incomplete: true })
+  })
+
+  it('previews an untracked symlink as a link and counts its destination once', async (context) => {
+    const linkRoot = join(root, 'symlink-fixture')
+    mkdirSync(linkRoot)
+    execFileSync(git!, ['-C', linkRoot, 'init'], { stdio: 'ignore' })
+    writeFileSync(join(linkRoot, 'target.txt'), 'target content\nsecond\nthird\n')
+    try {
+      symlinkSync('target.txt', join(linkRoot, 'link.txt'), 'file')
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') context.skip('File symlink privilege is unavailable')
+      throw error
+    }
+    const diff = await readGitFileDiff(git!, linkRoot, 'link.txt')
+    expect(diff.sections[0]?.patch).toContain('new file mode 120000')
+    expect(diff.sections[0]?.patch).toContain('+target.txt')
+    expect(diff.sections[0]?.patch).not.toContain('+target content')
+    expect((await readGitChanges(git!, linkRoot))?.summary).toEqual({ additions: 4, deletions: 0, incomplete: false })
   })
 })

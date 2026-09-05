@@ -42,6 +42,11 @@ measured summary 2,226.7 ms, selected diff 568.1 ms, preview preparation 2.1 ms 
 
 ## Release status
 
+PR review follow-up disables Git promisor lazy fetching, combines staged deletions with untracked replacements
+at the same path, and preserves symlink paths for diff and line counting. The local follow-up suite passed
+312 tests with one file-symlink test skipped because Windows denied symlink creation; the test runs when that
+privilege is available. CI remains the final gate for the follow-up commit.
+
 Local validation passed lint, both TypeScript projects, production build and 310 unit/integration tests.
 The full 33-test Electron E2E suite passed, including hidden headers and a 20,000-line file bounded to
 2,000 display lines. The final large-preview flow took 1,209 ms including refresh, Git and browser assertions;

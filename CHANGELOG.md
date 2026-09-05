@@ -18,6 +18,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 - Refreshing changes now reloads the selected file's diff, including after returning from an external editor.
 - Diff content beginning with repeated `+` or `-` characters keeps its highlighting and correct line numbers.
+- Changes cannot trigger Git's automatic missing-object fetches in partial clones.
+- A staged deletion and untracked replacement at the same path appear as one selectable file with both diffs.
+- Untracked symlinks preview the link destination and count it once, instead of showing the target file's contents.
 
 ### Performance
 
