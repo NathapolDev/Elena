@@ -13,6 +13,7 @@ export default defineConfig({
   test: {
     ...base.test,
     include: ['tests/*.perf.ts'],
+    fileParallelism: false,
     testTimeout: 120_000
   }
 })

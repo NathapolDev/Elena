@@ -1,8 +1,8 @@
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { buildChildEnv, isInside, resolveExecutable, validateDirectory } from '../src/main/security/paths'
+import { buildChildEnv, isInside, resolveExecutable, validateDirectory, validateFile } from '../src/main/security/paths'
 
 const root = mkdtempSync(join(tmpdir(), 'elena-paths-'))
 const outsideRoot = mkdtempSync(join(tmpdir(), 'elena-paths-outside-'))
@@ -66,6 +66,23 @@ describe('validateDirectory', () => {
     const link = join(root, 'escape-link')
     symlinkSync(outsideRoot, link, process.platform === 'win32' ? 'junction' : 'dir')
     expect(validateDirectory(link, root)).toEqual({ ok: false, reason: 'outside-root' })
+  })
+})
+
+describe('validateFile', () => {
+  it('resolves a readable file inside the root', () => {
+    expect(validateFile('a-file.txt', root)).toEqual({ ok: true, path: realpathSync.native(filePath) })
+  })
+
+  it('rejects missing files and directories', () => {
+    expect(validateFile('missing.txt', root)).toEqual({ ok: false, reason: 'missing' })
+    expect(validateFile('nested', root)).toEqual({ ok: false, reason: 'not-a-file' })
+  })
+
+  it('rejects an existing file outside the root', () => {
+    const outsideFile = join(outsideRoot, 'outside.txt')
+    writeFileSync(outsideFile, 'outside')
+    expect(validateFile(outsideFile, root)).toEqual({ ok: false, reason: 'outside-root' })
   })
 })
 

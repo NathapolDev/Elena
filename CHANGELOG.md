@@ -5,6 +5,30 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); version
 
 ## [Unreleased]
 
+### Added
+
+- View uncommitted changes from the **Changes** button without interrupting terminal sessions. The file list
+  includes staged, unstaged, untracked, deleted and renamed files, with an action to open existing files in VS Code.
+- Switch between **Unified** and **Side by side** diffs, with aligned before/after lines and separate staged
+  and working-tree sections. Git file headers are hidden to keep the preview focused on changed code.
+- The Changes button shows added/deleted line totals. Counts refresh when switching workspaces, returning
+  focus to Elena or closing the diff dialog. Binary files do not contribute text lines; incomplete counts show `≥`.
+
+### Fixed
+
+- Refreshing changes now reloads the selected file's diff, including after returning from an external editor.
+- Diff content beginning with repeated `+` or `-` characters keeps its highlighting and correct line numbers.
+- Changes cannot trigger Git's automatic missing-object fetches in partial clones.
+- A staged deletion and untracked replacement at the same path appear as one selectable file with both diffs.
+- Untracked symlinks preview the link destination and count it once, instead of showing the target file's contents.
+
+### Performance
+
+- Diff previews stop parsing after 2,000 display lines per section and show a notice when content is omitted.
+  File validation yields between batches so a large changed-file list does not block terminal output.
+- Added a Git diff performance fixture covering 1,000 changed files and a 1.8 MB patch. See
+  [View Diff release notes](docs/releases/view-diff.md) for local measurements and remaining release gates.
+
 ## [0.6.0] - 2026-09-01
 
 Performance. This release adds no features on purpose: every ceiling it lifts is on a path that the next
