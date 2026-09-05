@@ -9,7 +9,8 @@ import type {
   GitFileDiff,
   Workspace
 } from '@shared/types'
-import { parseUnifiedDiff } from '@shared/unifiedDiff'
+import { buildSideBySideDiff, MAX_VISIBLE_DIFF_LINES, prepareDiffPreview } from '@shared/unifiedDiff'
+import type { DiffCell, UnifiedDiffLine } from '@shared/unifiedDiff'
 import { ApiError, call, describeError } from '../lib/api'
 import { useStore } from '../state/store'
 
@@ -35,12 +36,47 @@ function statusLabel(change: GitChangeEntry): string {
   return areas.length > 0 ? `${label} · ${areas.join(' + ')}` : label
 }
 
-function DiffSection({ section }: { section: GitDiffSection }): React.JSX.Element {
-  const lines = useMemo(() => parseUnifiedDiff(section.patch), [section.patch])
+type DiffView = 'unified' | 'split'
+
+function SplitCell({ line, side }: { line?: DiffCell; side: 'left' | 'right' }): React.JSX.Element {
+  return (
+    <div className={`changes__split-cell changes__split-cell--${side} changes__line--${line?.kind ?? 'empty'}`}>
+      <span className="changes__line-number" aria-hidden="true">{(side === 'left' ? line?.oldLine : line?.newLine) ?? ''}</span>
+      <span className="changes__line-text">
+        {line?.text || ' '}
+        {line?.note ? <span className="changes__line-note">{line.note}</span> : null}
+      </span>
+    </div>
+  )
+}
+
+function SplitPatch({ lines, label }: { lines: UnifiedDiffLine[]; label: string }): React.JSX.Element {
+  const rows = useMemo(() => buildSideBySideDiff(lines), [lines])
+  return (
+    <div className="changes__split-patch" role="region" aria-label={`${label} side by side diff`}>
+      <div className="changes__split-head"><span>Before</span><span>After</span></div>
+      {rows.map((row, index) => row.kind === 'lines' ? (
+        <div className="changes__split-row" key={index}>
+          <SplitCell line={row.left} side="left" />
+          <SplitCell line={row.right} side="right" />
+        </div>
+      ) : (
+        <div className={`changes__split-meta changes__line--${row.kind}`} key={index}>{row.text || ' '}</div>
+      ))}
+    </div>
+  )
+}
+
+function DiffSection({ section, view }: { section: GitDiffSection; view: DiffView }): React.JSX.Element {
+  const preview = useMemo(() => prepareDiffPreview(section.patch), [section.patch])
+  const lines = preview.lines
 
   return (
     <section className="changes__diff-section" aria-label={`${SOURCE_LABEL[section.source]} diff`}>
       <h3>{SOURCE_LABEL[section.source]}</h3>
+      {preview.truncated ? (
+        <p className="changes__banner" role="status">Showing the first {MAX_VISIBLE_DIFF_LINES.toLocaleString()} diff lines. Open the file in VS Code to inspect the rest.</p>
+      ) : null}
       {section.truncated ? (
         <p className="changes__banner" role="status">
           Diff is larger than 2 MiB. Showing the first part only.
@@ -48,7 +84,9 @@ function DiffSection({ section }: { section: GitDiffSection }): React.JSX.Elemen
       ) : null}
       {section.binary ? (
         <div className="changes__empty">Binary file changed. Preview is unavailable.</div>
-      ) : section.patch ? (
+      ) : lines.length > 0 && view === 'split' ? (
+        <SplitPatch lines={lines} label={SOURCE_LABEL[section.source]} />
+      ) : lines.length > 0 ? (
         <div className="changes__patch" role="region" aria-label={`${SOURCE_LABEL[section.source]} unified diff`}>
           {lines.map((line, index) => (
             <div className={`changes__line changes__line--${line.kind}`} key={`${index}-${line.text}`}>
@@ -67,6 +105,7 @@ function DiffSection({ section }: { section: GitDiffSection }): React.JSX.Elemen
 
 export function ChangesDialog({ workspace, onClose }: Props): React.JSX.Element {
   const pushError = useStore((state) => state.pushError)
+  const [view, setView] = useState<DiffView>('unified')
   const [changes, setChanges] = useState<LoadState<GitChangesSnapshot | null>>({ status: 'loading' })
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [diff, setDiff] = useState<{ path: string; state: LoadState<GitFileDiff> } | null>(null)
@@ -77,6 +116,7 @@ export function ChangesDialog({ workspace, onClose }: Props): React.JSX.Element 
     try {
       const snapshot = await call('git:changes', { workspaceId: workspace.id })
       if (request !== changesRequest.current) return
+      setDiff(null)
       setChanges({ status: 'ready', value: snapshot })
       setSelectedPath((current) => {
         if (current && snapshot?.files.some((file) => file.path === current)) return current
@@ -114,7 +154,7 @@ export function ChangesDialog({ workspace, onClose }: Props): React.JSX.Element 
   }, [loadChanges, onClose, refresh])
 
   useEffect(() => {
-    if (!selectedPath) return
+    if (!selectedPath || changes.status !== 'ready') return
     let active = true
     void call('git:diff', { workspaceId: workspace.id, path: selectedPath })
       .then((value) => {
@@ -131,7 +171,7 @@ export function ChangesDialog({ workspace, onClose }: Props): React.JSX.Element 
     return () => {
       active = false
     }
-  }, [refresh, selectedPath, workspace.id])
+  }, [changes, refresh, selectedPath, workspace.id])
 
   const snapshot = changes.status === 'ready' ? changes.value : null
   const selected = snapshot?.files.find((file) => file.path === selectedPath)
@@ -164,6 +204,10 @@ export function ChangesDialog({ workspace, onClose }: Props): React.JSX.Element 
             <p>{workspace.name}{snapshot ? ` · ${snapshot.repository.branch}` : ''}</p>
           </div>
           <div className="changes__header-actions">
+            <div className="segmented changes__view-toggle" role="group" aria-label="Diff view">
+              <button type="button" className="segmented__option" aria-pressed={view === 'unified'} onClick={() => setView('unified')}>Unified</button>
+              <button type="button" className="segmented__option" aria-pressed={view === 'split'} onClick={() => setView('split')}>Side by side</button>
+            </div>
             <button type="button" className="button" onClick={() => void refresh()} disabled={changes.status === 'loading'}>
               <ArrowsClockwiseIcon size={17} /> Refresh
             </button>
@@ -233,7 +277,7 @@ export function ChangesDialog({ workspace, onClose }: Props): React.JSX.Element 
                   {selectedDiff.value.previousPath ? <span>Renamed from {selectedDiff.value.previousPath}</span> : null}
                 </header>
                 <div className="changes__sections">
-                  {selectedDiff.value.sections.map((section) => <DiffSection section={section} key={section.source} />)}
+                  {selectedDiff.value.sections.map((section) => <DiffSection section={section} view={view} key={section.source} />)}
                 </div>
               </>
             ) : null}

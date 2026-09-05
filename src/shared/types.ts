@@ -102,6 +102,8 @@ export type GitChangesSnapshot = {
   files: GitChangeEntry[]
   /** True when the bounded status result omitted additional entries. */
   truncated: boolean
+  /** Sum of staged and working-tree line changes, including readable untracked text. */
+  summary?: { additions: number; deletions: number; incomplete: boolean }
 }
 
 export type GitDiffSection = {

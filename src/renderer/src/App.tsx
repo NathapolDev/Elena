@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChatCircleIcon } from '@phosphor-icons/react/ChatCircle'
 import { FolderIcon } from '@phosphor-icons/react/Folder'
 import { GearSixIcon } from '@phosphor-icons/react/GearSix'
-import { GitDiffIcon } from '@phosphor-icons/react/GitDiff'
 import { InfoIcon } from '@phosphor-icons/react/Info'
 import { ListIcon } from '@phosphor-icons/react/List'
 import { PlusIcon } from '@phosphor-icons/react/Plus'
@@ -34,6 +33,7 @@ import { CommandPalette } from './components/CommandPalette'
 import type { Command } from './components/CommandPalette'
 import { Toasts } from './components/Toasts'
 import { ChangesDialog } from './components/ChangesDialog'
+import { ChangesButton } from './components/ChangesButton'
 
 type Modal =
   | 'none'
@@ -572,16 +572,7 @@ export function App(): React.JSX.Element {
         >
           <SquaresFourIcon size={18} /> Layout: 2×2
         </button>
-        <button
-          type="button"
-          className="button changes-trigger"
-          onClick={() => setModal('changes')}
-          disabled={!workspace}
-          aria-label="View changed files"
-          title="View changed files"
-        >
-          <GitDiffIcon size={18} /> <span>Changes</span>
-        </button>
+        <ChangesButton workspaceId={workspace?.id} dialogOpen={modal === 'changes'} onClick={() => setModal('changes')} />
         <button
           type="button"
           className="icon-button"

@@ -7,6 +7,7 @@
  */
 import { spawn } from 'node:child_process'
 import { statSync } from 'node:fs'
+import { open } from 'node:fs/promises'
 import { relative, resolve, sep } from 'node:path'
 import type {
   GitChangeEntry,
@@ -139,7 +140,8 @@ function isOpenable(workspaceRoot: string, path: string): boolean {
 export function parseGitStatus(
   output: Buffer,
   repositoryRoot: string,
-  workspaceRoot: string
+  workspaceRoot: string,
+  checkOpenable = true
 ): GitChangeEntry[] {
   const records = output.toString('utf8').split('\0')
   if (output.length > 0 && output[output.length - 1] !== 0) records.pop()
@@ -167,7 +169,7 @@ export function parseGitStatus(
       kind: classify(x, y),
       staged: x !== ' ' && x !== '?',
       unstaged: x === '?' || y !== ' ',
-      openable: isOpenable(workspaceRoot, path)
+      openable: checkOpenable && isOpenable(workspaceRoot, path)
     })
   }
 
@@ -185,7 +187,8 @@ function repositoryPath(repositoryRoot: string, workspaceRoot: string, path: str
 
 export async function readGitChanges(
   executable: string,
-  workspaceRoot: string
+  workspaceRoot: string,
+  includeSummary = true
 ): Promise<GitChangesSnapshot | null> {
   const repository = readGitBranch(workspaceRoot)
   if (!repository) return null
@@ -196,12 +199,102 @@ export async function readGitChanges(
     ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--', workspacePathspec(repository.root, workspaceRoot)],
     STATUS_OUTPUT_LIMIT
   )
-  const parsed = parseGitStatus(result.stdout, repository.root, workspaceRoot)
-  return {
+  const parsed = parseGitStatus(result.stdout, repository.root, workspaceRoot, false)
+  const files = parsed.slice(0, MAX_CHANGE_ENTRIES)
+  // Yield between small batches of path checks so a large repository cannot
+  // monopolize main while terminal output is waiting to be flushed.
+  for (let index = 0; index < files.length; index += 1) {
+    if (index % 8 === 0) await new Promise<void>((done) => setImmediate(done))
+    const file = files[index]!
+    file.openable = isOpenable(workspaceRoot, file.path)
+  }
+  const snapshot: GitChangesSnapshot = {
     repository,
-    files: parsed.slice(0, MAX_CHANGE_ENTRIES),
+    files,
     truncated: result.truncated || parsed.length > MAX_CHANGE_ENTRIES
   }
+  if (includeSummary) snapshot.summary = await readChangeSummary(executable, workspaceRoot, snapshot)
+  return snapshot
+}
+
+export function parseGitNumstat(output: Buffer): { additions: number; deletions: number } {
+  const records = output.toString('utf8').split('\0')
+  if (output.length > 0 && output[output.length - 1] !== 0) records.pop()
+  let additions = 0
+  let deletions = 0
+  for (let index = 0; index < records.length; index += 1) {
+    const match = records[index]?.match(/^(\d+|-)\t(\d+|-)\t([\s\S]*)$/)
+    if (!match) continue
+    if (match[1] !== '-' && match[2] !== '-') {
+      additions += Number(match[1])
+      deletions += Number(match[2])
+    }
+    // With -z, a rename has an empty path followed by two NUL-delimited names.
+    if (match[3] === '') index += 2
+  }
+  return { additions, deletions }
+}
+
+async function readChangeSummary(
+  executable: string,
+  workspaceRoot: string,
+  snapshot: GitChangesSnapshot
+): Promise<NonNullable<GitChangesSnapshot['summary']>> {
+  const summary = { additions: 0, deletions: 0, incomplete: snapshot.truncated }
+  const prefix = workspacePathspec(snapshot.repository.root, workspaceRoot)
+  const results = await Promise.all([false, true].map((cached) => runGit(
+    executable,
+    snapshot.repository.root,
+    ['diff', '--numstat', '-z', '--no-ext-diff', '--no-textconv', '--find-renames',
+      ...(cached ? ['--cached'] : []), '--', `:(literal)${prefix}`],
+    STATUS_OUTPUT_LIMIT
+  )))
+  for (const result of results) {
+    const counts = parseGitNumstat(result.stdout)
+    summary.additions += counts.additions
+    summary.deletions += counts.deletions
+    summary.incomplete ||= result.truncated
+  }
+
+  // Untracked text has no index entry. Bound all asynchronous reads to 16 MiB
+  // per summary and 2 MiB per file; never spawn a Git process per loose file.
+  let remaining = 16 * 1024 * 1024
+  for (const change of snapshot.files) {
+    if (change.kind !== 'untracked') continue
+    const file = validateFile(change.path, workspaceRoot)
+    if (!file.ok || remaining <= 0) {
+      summary.incomplete = true
+      continue
+    }
+    try {
+      const handle = await open(file.path, 'r')
+      try {
+        const size = (await handle.stat()).size
+        if (size > Math.min(remaining, DIFF_OUTPUT_LIMIT)) {
+          summary.incomplete = true
+          continue
+        }
+        const data = Buffer.alloc(size)
+        let length = 0
+        while (length < size) {
+          const { bytesRead } = await handle.read(data, length, size - length, length)
+          if (bytesRead === 0) break
+          length += bytesRead
+        }
+        remaining -= size
+        if (data.subarray(0, Math.min(length, 8000)).includes(0)) continue
+        for (let index = 0; index < length; index += 1) {
+          if (data[index] === 10) summary.additions += 1
+        }
+        if (length > 0 && data[length - 1] !== 10) summary.additions += 1
+      } finally {
+        await handle.close()
+      }
+    } catch {
+      summary.incomplete = true
+    }
+  }
+  return summary
 }
 
 function binaryPatch(patch: string): boolean {
@@ -242,7 +335,7 @@ export async function readGitFileDiff(
   workspaceRoot: string,
   requestedPath: string
 ): Promise<GitFileDiff> {
-  const snapshot = await readGitChanges(executable, workspaceRoot)
+  const snapshot = await readGitChanges(executable, workspaceRoot, false)
   const change = snapshot?.files.find((file) => file.path === requestedPath)
   if (!snapshot || !change) throw new GitPathNotChangedError()
 

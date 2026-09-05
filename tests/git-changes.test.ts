@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { parseGitStatus, readGitChanges, readGitFileDiff } from '../src/main/git/changes'
+import { parseGitNumstat, parseGitStatus, readGitChanges, readGitFileDiff } from '../src/main/git/changes'
 import { resolveExecutable } from '../src/main/security/paths'
 
 const root = mkdtempSync(join(tmpdir(), 'elena-git-changes-'))
@@ -36,6 +36,9 @@ beforeAll(() => {
   writeFileSync(join(root, 'untracked file.txt'), 'new file\n')
   writeFileSync(join(root, 'nested', 'inside.txt'), 'inside after\n')
   writeFileSync(join(root, 'outside.txt'), 'outside\n')
+  writeFileSync(join(root, 'binary.dat'), Buffer.from([0, 10, 10]))
+  writeFileSync(join(root, 'empty.txt'), '')
+  writeFileSync(join(root, 'no-newline.txt'), 'one line')
 })
 
 afterAll(() => {
@@ -43,6 +46,14 @@ afterAll(() => {
 })
 
 describe('Git status parsing', () => {
+  it('totals numstat records without counting binary files or rename filenames', () => {
+    const counts = parseGitNumstat(Buffer.from(['2\t3\tfile', '-\t-\tbinary', '0\t0\t', 'old name', 'new name', '4\t1\twith\ttab', ''].join('\0')))
+    expect(counts).toEqual({ additions: 6, deletions: 4 })
+  })
+
+  it('ignores a partial numstat record', () => {
+    expect(parseGitNumstat(Buffer.from(['2\t1\tfile', '10\t20\tpartial'].join('\0')))).toEqual({ additions: 2, deletions: 1 })
+  })
   it('parses NUL-delimited rename records and paths with spaces', () => {
     const output = Buffer.from('R  new name.txt\0old name.txt\0?? loose file.txt\0')
     const files = parseGitStatus(output, root, root)
@@ -59,6 +70,14 @@ describe('Git status parsing', () => {
 })
 
 describe.runIf(Boolean(git))('Git changes service', () => {
+  it('sums staged, unstaged and untracked text lines, ignoring empty and binary files', async () => {
+    const snapshot = await readGitChanges(git!, root)
+    expect(snapshot?.summary).toEqual({ additions: 7, deletions: 2, incomplete: false })
+  })
+
+  it('can skip summary work when only loading a file preview', async () => {
+    expect((await readGitChanges(git!, root, false))?.summary).toBeUndefined()
+  })
   it('reports staged, unstaged, untracked, deleted and renamed files', async () => {
     const snapshot = await readGitChanges(git!, root)
     const byPath = new Map(snapshot?.files.map((file) => [file.path, file]))
@@ -94,5 +113,15 @@ describe.runIf(Boolean(git))('Git changes service', () => {
     const snapshot = await readGitChanges(git!, join(root, 'nested'))
 
     expect(snapshot?.files.map((file) => file.path)).toEqual(['inside.txt'])
+    expect(snapshot?.summary).toEqual({ additions: 1, deletions: 1, incomplete: false })
+  })
+
+  it('marks large untracked files as incomplete in a repository without a first commit', async () => {
+    const largeRoot = join(root, 'large-fixture')
+    mkdirSync(largeRoot)
+    execFileSync(git!, ['-C', largeRoot, 'init'], { stdio: 'ignore' })
+    writeFileSync(join(largeRoot, 'large.txt'), Buffer.alloc(2 * 1024 * 1024 + 1, 65))
+    const snapshot = await readGitChanges(git!, largeRoot)
+    expect(snapshot?.summary).toEqual({ additions: 0, deletions: 0, incomplete: true })
   })
 })
