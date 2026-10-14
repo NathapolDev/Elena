@@ -13,6 +13,7 @@ import type { Workspace } from '@shared/types'
 type Props = {
   workspace: Workspace
   onClose: () => void
+  onCreated?: (terminalId: string, direction?: 'horizontal' | 'vertical', anchor?: string) => void
 }
 
 type Source =
@@ -20,7 +21,7 @@ type Source =
   | { kind: 'preset'; id: string }
   | { kind: 'custom' }
 
-export function NewTerminalDialog({ workspace, onClose }: Props): React.JSX.Element {
+export function NewTerminalDialog({ workspace, onClose, onCreated }: Props): React.JSX.Element {
   const shells = useStore((s) => s.shells)
   const presets = useStore((s) => s.presets)
   const defaultShellId = useStore((s) => s.settings.defaultShellId)
@@ -32,7 +33,7 @@ export function NewTerminalDialog({ workspace, onClose }: Props): React.JSX.Elem
     initialShell ? { kind: 'shell', id: initialShell.id } : { kind: 'custom' }
   )
   const [cwd, setCwd] = useState(workspace.projectRoot)
-  const [placement, setPlacement] = useState<'grid' | 'tab' | 'horizontal' | 'vertical'>('grid')
+  const [placement, setPlacement] = useState<'tab' | 'horizontal' | 'vertical'>('tab')
   const [customExecutable, setCustomExecutable] = useState('')
   const [customArgs, setCustomArgs] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -80,16 +81,16 @@ export function NewTerminalDialog({ workspace, onClose }: Props): React.JSX.Elem
       // The cwd defaults to the project root; anything else is validated
       // against it so a session cannot silently start outside the workspace.
       const validatedCwd = await call('path:validate', { path: cwd, mustBeInside: workspace.projectRoot })
-      await addTerminal({
+      const terminalId = await addTerminal({
+        workspaceId: workspace.id,
         title: selection.title,
         executable: selection.executable,
         args: selection.args,
         cwd: validatedCwd.path,
         envAllowlist: selection.envAllowlist,
-        ...('presetId' in selection && selection.presetId ? { presetId: selection.presetId } : {}),
-        ...(placement === 'grid' ? { spatialGrid: true } : {}),
-        ...(placement === 'horizontal' || placement === 'vertical' ? { split: placement } : {})
+        ...('presetId' in selection && selection.presetId ? { presetId: selection.presetId } : {})
       })
+      onCreated?.(terminalId, placement === 'tab' ? undefined : placement, activeTerminalId ?? undefined)
       onClose()
     } catch (err) {
       const described = describeError(err)
@@ -200,7 +201,6 @@ export function NewTerminalDialog({ workspace, onClose }: Props): React.JSX.Elem
           <div className="segmented" role="group" aria-labelledby="placement-label">
             {(
               [
-                ['grid', 'Next grid slot'],
                 ['tab', 'New tab'],
                 ['horizontal', 'Split right'],
                 ['vertical', 'Split down']

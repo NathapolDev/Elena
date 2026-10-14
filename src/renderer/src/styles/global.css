@@ -1,6 +1,7 @@
 @import './fonts.css';
 @import './tokens.css';
 @import '@xterm/xterm/css/xterm.css';
+@import './browser.css';
 
 * {
   box-sizing: border-box;

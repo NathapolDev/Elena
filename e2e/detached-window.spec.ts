@@ -11,8 +11,9 @@ import { execSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import { seedE2eSettings } from './settings'
+import { action, configureSession, launchTestApp } from './browser-helpers'
 
 function shellPids(): Set<number> {
   const out = execSync(
@@ -33,23 +34,19 @@ test('a write from one window does not delete a terminal the other created', asy
   seedE2eSettings(userData)
   writeFileSync(join(projectRoot, 'MARKER.txt'), 'x')
 
-  const app = await electron.launch({
-    args: ['.', `--user-data-dir=${userData}`],
-    cwd: process.cwd(),
-    env: { ...process.env, ELENA_E2E: '1' }
-  })
+  const app = await launchTestApp(userData)
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
 
-  await page.getByRole('button', { name: 'Create Workspace' }).click()
+  await page.getByRole('button', { name: 'New project', exact: true }).click()
   await page.getByLabel('Name', { exact: true }).fill('Cross Window')
   await page.getByLabel('Project root').fill(projectRoot)
-  await page.getByRole('button', { name: 'Create workspace', exact: true }).click()
-  await page.getByRole('button', { name: 'New Terminal' }).first().click()
+  await page.getByRole('button', { name: 'Create project', exact: true }).click()
+  await configureSession(page)
   await page.getByRole('button', { name: 'Open terminal' }).click()
-  await expect(page.locator('.session-item')).toHaveCount(1)
+  await expect(page.locator('.browser-tab')).toHaveCount(1)
 
-  await page.locator('.pane').first().getByRole('button', { name: 'Open in new window' }).click()
+  await action(page, 'Open in new window')
   await expect.poll(() => app.windows().length).toBe(2)
   const detachedPage = app.windows().find((w) => w !== page)!
   await detachedPage.waitForLoadState('domcontentloaded')
@@ -59,9 +56,9 @@ test('a write from one window does not delete a terminal the other created', asy
   await expect(detachedPage.locator('.pane__title')).toBeVisible()
 
   // The main window creates a terminal the detached window has never seen.
-  await page.getByRole('button', { name: 'New Terminal' }).first().click()
+  await configureSession(page)
   await page.getByRole('button', { name: 'Open terminal' }).click()
-  await expect(page.locator('.session-item')).toHaveCount(2)
+  await expect(page.locator('.browser-tab')).toHaveCount(2)
 
   // Now the detached window writes. Patches carry the whole `terminals` array,
   // so a stale copy here silently drops the terminal made above.
@@ -78,15 +75,11 @@ test('a write from one window does not delete a terminal the other created', asy
   }
   expect(persisted.workspaces[0]!.terminals).toHaveLength(2)
 
-  const relaunched = await electron.launch({
-    args: ['.', `--user-data-dir=${userData}`],
-    cwd: process.cwd(),
-    env: { ...process.env, ELENA_E2E: '1' }
-  })
+  const relaunched = await launchTestApp(userData)
   const relaunchedPage = await relaunched.firstWindow()
   await relaunchedPage.waitForLoadState('domcontentloaded')
-  await expect(relaunchedPage.locator('.session-item')).toHaveCount(2)
-  await expect(relaunchedPage.locator('.session-item__title').first()).toHaveText('Renamed In Detached')
+  await expect(relaunchedPage.locator('.browser-tab')).toHaveCount(2)
+  await expect(relaunchedPage.locator('.browser-tab__title').first()).toHaveText('Renamed In Detached')
 
   await relaunched.close()
   rmSync(projectRoot, { recursive: true, force: true })
@@ -101,28 +94,24 @@ test('quitting with a detached window open leaves no orphan shell', async () => 
 
   const before = shellPids()
 
-  const app = await electron.launch({
-    args: ['.', `--user-data-dir=${userData}`],
-    cwd: process.cwd(),
-    env: { ...process.env, ELENA_E2E: '1' }
-  })
+  const app = await launchTestApp(userData)
   const page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
 
-  await page.getByRole('button', { name: 'Create Workspace' }).click()
+  await page.getByRole('button', { name: 'New project', exact: true }).click()
   await page.getByLabel('Name', { exact: true }).fill('Orphan Check')
   await page.getByLabel('Project root').fill(projectRoot)
-  await page.getByRole('button', { name: 'Create workspace', exact: true }).click()
-  await page.getByRole('button', { name: 'New Terminal' }).first().click()
+  await page.getByRole('button', { name: 'Create project', exact: true }).click()
+  await configureSession(page)
   await page.getByRole('button', { name: 'Open terminal' }).click()
-  await expect(page.locator('.pane').getByText(/Running/)).toBeVisible()
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText('Running')
 
   // A shell really is running now, or the rest of this proves nothing.
   const during = shellPids()
   const spawned = [...during].filter((id) => !before.has(id))
   expect(spawned.length).toBeGreaterThan(0)
 
-  await page.locator('.pane').first().getByRole('button', { name: 'Open in new window' }).click()
+  await action(page, 'Open in new window')
   await expect.poll(() => app.windows().length).toBe(2)
 
   await app.close()

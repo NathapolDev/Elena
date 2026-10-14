@@ -50,3 +50,58 @@ export function saveSidebarHidden(hidden: boolean): void {
     /* see saveSidebarWidth */
   }
 }
+
+/** Window chrome only; saved projects remain authoritative in workspaces.json. */
+export type BrowserPrefs = {
+  openWorkspaceIds: string[]
+  collapsedWorkspaceIds: string[]
+  activeWorkspaceId: string | null
+}
+
+const BROWSER_KEY = 'elena.browser.v1'
+
+export function loadBrowserPrefs(): BrowserPrefs | null {
+  try {
+    const raw: unknown = JSON.parse(window.localStorage.getItem(BROWSER_KEY) ?? 'null')
+    if (!raw || typeof raw !== 'object') return null
+    const value = raw as Record<string, unknown>
+    const isIds = (ids: unknown): ids is string[] => Array.isArray(ids) && ids.every((id) => typeof id === 'string')
+    if (!isIds(value.openWorkspaceIds) || !isIds(value.collapsedWorkspaceIds)) return null
+    if (value.activeWorkspaceId !== null && typeof value.activeWorkspaceId !== 'string') return null
+    return {
+      openWorkspaceIds: [...new Set(value.openWorkspaceIds)],
+      collapsedWorkspaceIds: [...new Set(value.collapsedWorkspaceIds)],
+      activeWorkspaceId: value.activeWorkspaceId
+    }
+  } catch {
+    return null
+  }
+}
+
+export function reconcileBrowserPrefs(
+  prefs: BrowserPrefs | null,
+  workspaceIds: string[],
+  preferredWorkspaceId?: string
+): BrowserPrefs {
+  const valid = new Set(workspaceIds)
+  const openWorkspaceIds = prefs
+    ? [...new Set(prefs.openWorkspaceIds)].filter((id) => valid.has(id))
+    : workspaceIds.slice(0, 1)
+  const preferred = preferredWorkspaceId && valid.has(preferredWorkspaceId) ? preferredWorkspaceId : null
+  if (preferred && !openWorkspaceIds.includes(preferred)) openWorkspaceIds.push(preferred)
+  const activeWorkspaceId = preferred ?? (prefs?.activeWorkspaceId && openWorkspaceIds.includes(prefs.activeWorkspaceId)
+    ? prefs.activeWorkspaceId : openWorkspaceIds[0] ?? null)
+  return {
+    openWorkspaceIds,
+    collapsedWorkspaceIds: (prefs?.collapsedWorkspaceIds ?? []).filter((id) => openWorkspaceIds.includes(id) && id !== preferred),
+    activeWorkspaceId
+  }
+}
+
+export function saveBrowserPrefs(prefs: BrowserPrefs): void {
+  try {
+    window.localStorage.setItem(BROWSER_KEY, JSON.stringify(prefs))
+  } catch {
+    /* Chrome persistence must never prevent a project from opening. */
+  }
+}

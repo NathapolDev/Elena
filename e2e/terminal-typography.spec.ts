@@ -1,9 +1,10 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import type { ConsoleMessage, ElectronApplication, Page } from '@playwright/test'
 import { seedE2eSettings } from './settings'
+import { configureSession, launchTestApp } from './browser-helpers'
 
 /** Shipped in the app, so it is the default with nothing installed. */
 const BUNDLED_FONT = '0xProto Nerd Font Mono'
@@ -14,7 +15,7 @@ let projectRoot: string
 let userData: string
 
 function launchApp(): Promise<ElectronApplication> {
-  return electron.launch({ args: ['.', `--user-data-dir=${userData}`], cwd: process.cwd() })
+  return launchTestApp(userData)
 }
 
 test.beforeAll(async () => {
@@ -43,11 +44,11 @@ test('applies installed font metrics live, persists them, and resets to the orig
   await expect(page.locator('#root')).not.toBeEmpty()
   await expect(page.locator('vite-error-overlay')).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Create Workspace' }).click()
+  await page.getByRole('button', { name: 'New project', exact: true }).click()
   await page.getByLabel('Name').fill('Typography Project')
   await page.getByLabel('Project root').fill(projectRoot)
-  await page.getByRole('button', { name: 'Create workspace', exact: true }).click()
-  await page.getByRole('button', { name: 'New Terminal' }).first().click()
+  await page.getByRole('button', { name: 'Create project', exact: true }).click()
+  await configureSession(page)
   await page.getByRole('button', { name: 'Open terminal' }).click()
 
   const pane = page.locator('.pane').first()
@@ -75,7 +76,7 @@ test('applies installed font metrics live, persists them, and resets to the orig
   )
   expect(bundledFaces).toEqual(['400/italic/loaded', '400/normal/loaded', '700/normal/loaded'])
 
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.keyboard.press('Control+,')
   await expect(page.getByLabel('Font family')).toHaveValue('')
   await expect(page.getByLabel('Font size')).toHaveValue('13')
   await expect(page.getByLabel('Line height')).toHaveValue('1.2')
@@ -117,7 +118,8 @@ test('applies installed font metrics live, persists them, and resets to the orig
   await page.waitForLoadState('domcontentloaded')
   page.on('console', recordConsoleIssue)
 
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText('Not started')
+  await page.keyboard.press('Control+,')
   await expect(page.getByLabel('Font family')).toHaveValue(selectedFont)
   await expect(page.getByLabel('Font size')).toHaveValue('15')
   await expect(page.getByLabel('Line height')).toHaveValue('1.4')

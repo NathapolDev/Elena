@@ -18,7 +18,7 @@ export function NewWorkspaceDialog({ onClose }: Props): React.JSX.Element {
       const picked = await call('dialog:pick-directory', {})
       if (!picked) return
       setProjectRoot(picked.path)
-      if (!name.trim()) setName(picked.path.split(/[\\/]/).filter(Boolean).pop() ?? 'Workspace')
+      if (!name.trim()) setName(picked.path.split(/[\\/]/).filter(Boolean).pop() ?? 'Project')
       setError(null)
     } catch (err) {
       setError(describeError(err).body)
@@ -35,7 +35,7 @@ export function NewWorkspaceDialog({ onClose }: Props): React.JSX.Element {
       await call('path:validate', { path: projectRoot })
       const workspace = await createWorkspace(name.trim(), projectRoot)
       if (workspace) onClose()
-      else setError('Could not create the workspace.')
+      else setError('Could not create the project.')
     } catch (err) {
       setError(describeError(err).body)
     } finally {
@@ -52,7 +52,7 @@ export function NewWorkspaceDialog({ onClose }: Props): React.JSX.Element {
         onSubmit={(event) => void submit(event)}
       >
         <h2 className="dialog__title" id="new-workspace-title">
-          New workspace
+          New project
         </h2>
 
         <div className="dialog__row">
@@ -95,7 +95,7 @@ export function NewWorkspaceDialog({ onClose }: Props): React.JSX.Element {
             Cancel
           </button>
           <button type="submit" className="button button--primary" disabled={busy || !name.trim() || !projectRoot}>
-            Create workspace
+            Create project
           </button>
         </div>
       </form>

@@ -30,8 +30,9 @@ import type {
   Workspace
 } from '@shared/types'
 import { call, describeError } from '../lib/api'
+import { loadBrowserPrefs, reconcileBrowserPrefs } from '../lib/uiPrefs'
 import { clearTerminalBacklog } from '../lib/terminalBus'
-import { getTerminal, releaseTerminal } from '../lib/terminalRegistry'
+import { acquireTerminal, getTerminal, releaseTerminal } from '../lib/terminalRegistry'
 
 export type Toast = {
   id: string
@@ -41,6 +42,8 @@ export type Toast = {
 }
 
 export type NewTerminalRequest = {
+  /** Captured at intent time, before any asynchronous validation. */
+  workspaceId?: string
   title: string
   executable: string
   args: string[]
@@ -56,6 +59,8 @@ export type NewTerminalRequest = {
 type State = {
   ready: boolean
   workspaces: Workspace[]
+  openWorkspaceIds: string[]
+  collapsedWorkspaceIds: string[]
   activeWorkspaceId: string | null
   activeTerminalId: string | null
   zoomedTerminalId: string | null
@@ -80,10 +85,12 @@ type State = {
   renameWorkspace: (id: string, name: string) => Promise<boolean>
   deleteWorkspace: (id: string) => Promise<void>
   selectWorkspace: (id: string) => void
+  closeProject: (id: string) => void
+  toggleProjectCollapsed: (id: string) => void
   openWorkspaceById: (id: string) => Promise<void>
 
   startQuickSession: (presetId: string) => Promise<void>
-  addTerminal: (request: NewTerminalRequest) => Promise<void>
+  addTerminal: (request: NewTerminalRequest) => Promise<string>
   renameTerminal: (terminalId: string, title: string) => Promise<boolean>
   startTerminal: (terminalId: string, cols: number, rows: number) => Promise<void>
   restartTerminal: (terminalId: string, cols: number, rows: number) => Promise<void>
@@ -158,6 +165,8 @@ function scheduleLayoutSend(workspaceId: string, layout: LayoutNode | null): voi
 export const useStore = create<State>((set, get) => ({
   ready: false,
   workspaces: [],
+  openWorkspaceIds: [],
+  collapsedWorkspaceIds: [],
   activeWorkspaceId: null,
   activeTerminalId: null,
   zoomedTerminalId: null,
@@ -192,12 +201,11 @@ export const useStore = create<State>((set, get) => ({
       // first. Without this the outcome would rest on all six handlers staying
       // synchronous, which nothing enforces.
       const chosen = get().activeWorkspaceId
-      const first =
-        (preferredWorkspaceId && workspaces.find((w) => w.id === preferredWorkspaceId)) ||
-        (chosen && workspaces.find((w) => w.id === chosen)) ||
-        workspaces[0]
+      const chrome = reconcileBrowserPrefs(loadBrowserPrefs(), workspaces.map((w) => w.id), preferredWorkspaceId ?? chosen ?? undefined)
+      const first = workspaces.find((w) => w.id === chrome.activeWorkspaceId)
       set({
         ready: true,
+        ...chrome,
         workspaces,
         presets,
         shells,
@@ -206,7 +214,7 @@ export const useStore = create<State>((set, get) => ({
         sessions: Object.fromEntries(sessions.map((s) => [s.terminalId, s])),
         detachedTerminalIds: detached.terminalIds,
         activeWorkspaceId: first?.id ?? null,
-        activeTerminalId: first?.activeTerminalId ?? collectTerminalIds(first?.layout ?? null)[0] ?? null
+        activeTerminalId: first?.terminals.find((t) => t.id === first.activeTerminalId)?.id ?? first?.terminals[0]?.id ?? null
       })
     } catch (error) {
       set({ ready: true })
@@ -216,7 +224,14 @@ export const useStore = create<State>((set, get) => ({
 
   async refreshWorkspaces() {
     try {
-      set({ workspaces: await call('workspace:list') })
+      const workspaces = await call('workspace:list')
+      set((state) => {
+        const chrome = reconcileBrowserPrefs(state, workspaces.map((w) => w.id))
+        const active = workspaces.find((w) => w.id === chrome.activeWorkspaceId)
+        const activeTerminalId = active?.terminals.some((t) => t.id === state.activeTerminalId)
+          ? state.activeTerminalId : active?.terminals.find((t) => t.id === active.activeTerminalId)?.id ?? active?.terminals[0]?.id ?? null
+        return { workspaces, ...chrome, activeTerminalId }
+      })
     } catch (error) {
       get().pushError(error)
     }
@@ -226,7 +241,8 @@ export const useStore = create<State>((set, get) => ({
     try {
       const workspace = await call('workspace:create', { name, projectRoot })
       set((state) => ({
-        workspaces: [...state.workspaces, workspace],
+        workspaces: state.workspaces.some((w) => w.id === workspace.id) ? state.workspaces : [...state.workspaces, workspace],
+        openWorkspaceIds: [...new Set([...state.openWorkspaceIds, workspace.id])],
         activeWorkspaceId: workspace.id,
         activeTerminalId: null
       }))
@@ -239,14 +255,21 @@ export const useStore = create<State>((set, get) => ({
 
   async deleteWorkspace(id) {
     try {
+      // Reuse the sole terminal release path before deleting the saved project.
+      const terminals = get().workspaces.find((w) => w.id === id)?.terminals ?? []
+      for (const terminal of terminals) await get().closeTerminal(terminal.id)
       await call('workspace:delete', { id })
       set((state) => {
         const workspaces = state.workspaces.filter((w) => w.id !== id)
-        const nextActive = state.activeWorkspaceId === id ? (workspaces[0]?.id ?? null) : state.activeWorkspaceId
+        const chrome = reconcileBrowserPrefs(state, workspaces.map((w) => w.id))
+        const active = workspaces.find((w) => w.id === chrome.activeWorkspaceId)
+        const ids = new Set(state.workspaces.find((w) => w.id === id)?.terminals.map((t) => t.id) ?? [])
         return {
           workspaces,
-          activeWorkspaceId: nextActive,
-          activeTerminalId: null,
+          ...chrome,
+          sessions: Object.fromEntries(Object.entries(state.sessions).filter(([terminalId]) => !ids.has(terminalId))),
+          unread: Object.fromEntries(Object.entries(state.unread).filter(([terminalId]) => !ids.has(terminalId))),
+          activeTerminalId: state.activeWorkspaceId === id ? active?.terminals.find((t) => t.id === active.activeTerminalId)?.id ?? active?.terminals[0]?.id ?? null : state.activeTerminalId,
           zoomedTerminalId: null
         }
       })
@@ -277,16 +300,55 @@ export const useStore = create<State>((set, get) => ({
     if (!get().workspaces.some((workspace) => workspace.id === id)) {
       await get().refreshWorkspaces()
     }
-    get().selectWorkspace(id)
+    const workspace = get().workspaces.find((w) => w.id === id)
+    if (!workspace) return
+    try {
+      await call('path:validate', { path: workspace.projectRoot })
+      get().selectWorkspace(id)
+    } catch (error) {
+      get().pushError(error)
+    }
   },
 
   selectWorkspace(id) {
     const workspace = get().workspaces.find((w) => w.id === id)
-    set({
-      activeWorkspaceId: id,
-      zoomedTerminalId: null,
-      activeTerminalId: workspace?.activeTerminalId ?? collectTerminalIds(workspace?.layout ?? null)[0] ?? null
+    if (!workspace) return
+    const activeTerminalId = workspace.terminals.some((t) => t.id === workspace.activeTerminalId)
+      ? workspace.activeTerminalId! : workspace.terminals[0]?.id ?? null
+    set((state) => {
+      const unread = { ...state.unread }
+      if (activeTerminalId && !state.detachedTerminalIds.includes(activeTerminalId)) delete unread[activeTerminalId]
+      return {
+        openWorkspaceIds: [...new Set([...state.openWorkspaceIds, id])],
+        collapsedWorkspaceIds: state.collapsedWorkspaceIds.filter((item) => item !== id),
+        activeWorkspaceId: id,
+        zoomedTerminalId: null,
+        activeTerminalId,
+        unread
+      }
     })
+  },
+
+  closeProject(id) {
+    set((state) => {
+      const openWorkspaceIds = state.openWorkspaceIds.filter((item) => item !== id)
+      const activeWorkspaceId = state.activeWorkspaceId === id ? openWorkspaceIds[0] ?? null : state.activeWorkspaceId
+      const active = state.workspaces.find((w) => w.id === activeWorkspaceId)
+      return {
+        openWorkspaceIds,
+        collapsedWorkspaceIds: state.collapsedWorkspaceIds.filter((item) => item !== id),
+        activeWorkspaceId,
+        activeTerminalId: state.activeWorkspaceId === id ? active?.terminals.find((t) => t.id === active.activeTerminalId)?.id ?? active?.terminals[0]?.id ?? null : state.activeTerminalId,
+        zoomedTerminalId: null
+      }
+    })
+  },
+
+  toggleProjectCollapsed(id) {
+    set((state) => ({
+      collapsedWorkspaceIds: state.collapsedWorkspaceIds.includes(id)
+        ? state.collapsedWorkspaceIds.filter((item) => item !== id) : [...state.collapsedWorkspaceIds, id]
+    }))
   },
 
   /**
@@ -335,39 +397,42 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async addTerminal(request) {
+    const initial = get()
+    const workspaceId = request.workspaceId ?? initial.activeWorkspaceId
+    const original = initial.workspaces.find((w) => w.id === workspaceId)
+    if (!original) throw new Error('The project is no longer available.')
+    const validated = await call('path:validate', { path: request.cwd, mustBeInside: original.projectRoot })
     const state = get()
-    const workspace = state.workspaces.find((w) => w.id === state.activeWorkspaceId)
-    if (!workspace) return
-
+    const workspace = state.workspaces.find((w) => w.id === workspaceId)
+    if (!workspace) throw new Error('The project was deleted while creating the session.')
     const terminalId = crypto.randomUUID()
     const config: TerminalConfig = {
       id: terminalId,
       title: request.title,
       executable: request.executable,
       args: request.args,
-      cwd: request.cwd,
+      cwd: validated.path,
       envAllowlist: request.envAllowlist,
       ...(request.presetId ? { presetId: request.presetId } : {})
     }
-
+    const anchor = initial.activeWorkspaceId === workspace.id ? initial.activeTerminalId : workspace.activeTerminalId
     const layout: LayoutNode = request.spatialGrid
-      ? (buildSpatialGrid([...workspace.terminals.map((terminal) => terminal.id), terminalId], terminalId) ?? {
-          type: 'terminal',
-          terminalId
-        })
-      : request.split && state.activeTerminalId
-        ? splitTerminal(workspace.layout, state.activeTerminalId, terminalId, request.split)
+      ? (buildSpatialGrid([...workspace.terminals.map((terminal) => terminal.id), terminalId], terminalId) ?? { type: 'terminal', terminalId })
+      : request.split && anchor
+        ? splitTerminal(workspace.layout, anchor, terminalId, request.split)
         : appendTerminal(workspace.layout, terminalId)
-
-    await persistWorkspace(set, get, workspace.id, {
-      terminals: [...workspace.terminals, config],
-      layout,
-      activeTerminalId: terminalId
+    const updated = await call('workspace:update', {
+      id: workspace.id,
+      patch: { terminals: [...workspace.terminals, config], layout, activeTerminalId: terminalId }
     })
-    set({ activeTerminalId: terminalId })
-    // Creating a terminal is an explicit launch action. Restored terminal
-    // configurations take a different path and remain idle until Start.
+    set((current) => ({
+      workspaces: current.workspaces.map((w) => w.id === workspace.id ? updated : w),
+      ...(current.activeWorkspaceId === workspace.id ? { activeTerminalId: terminalId } : {})
+    }))
+    // Creating a terminal is an explicit launch action. Restored configurations
+    // remain idle until Start; the target stays fixed even if navigation changes.
     await get().startTerminal(terminalId, 80, 24)
+    return terminalId
   },
 
   async renameTerminal(terminalId, title) {
@@ -395,13 +460,17 @@ export const useStore = create<State>((set, get) => ({
 
   async startTerminal(terminalId, cols, rows) {
     const state = get()
-    if (!state.activeWorkspaceId) return
+    const owner = state.workspaces.find((w) => w.terminals.some((t) => t.id === terminalId))
+    if (!owner) return
+    // A launch may finish after its group was hidden. Give it a bounded xterm
+    // buffer even when no pane mounts, rather than leaving output in the backlog.
+    acquireTerminal(terminalId, { scrollback: state.settings.scrollback, onOutput: () => get().markUnread(terminalId) })
     set((s) => ({
       sessions: { ...s.sessions, [terminalId]: { terminalId, status: 'starting' } }
     }))
     try {
       const session = await call('terminal:create', {
-        workspaceId: state.activeWorkspaceId,
+        workspaceId: owner.id,
         terminalId,
         cols,
         rows
@@ -468,8 +537,8 @@ export const useStore = create<State>((set, get) => ({
   },
 
   async closeTerminal(terminalId) {
-    const workspaceId = get().activeWorkspaceId
-    if (!workspaceId || !get().workspaces.some((w) => w.id === workspaceId)) return
+    const workspaceId = get().workspaces.find((w) => w.terminals.some((t) => t.id === terminalId))?.id
+    if (!workspaceId) return
 
     try {
       await call('terminal:terminate', { terminalId })
@@ -488,8 +557,10 @@ export const useStore = create<State>((set, get) => ({
 
     const terminals = workspace.terminals.filter((t) => t.id !== terminalId)
     const layout = removeTerminal(workspace.layout, terminalId)
-    const remaining = collectTerminalIds(layout)
-    const nextActive = state.activeTerminalId === terminalId ? (remaining[0] ?? null) : state.activeTerminalId
+    const remaining = terminals.map((t) => t.id)
+    const ownerActive = remaining.includes(workspace.activeTerminalId ?? '') ? workspace.activeTerminalId! : remaining[0] ?? null
+    const nextActive = state.activeWorkspaceId === workspaceId && !remaining.includes(state.activeTerminalId ?? '')
+      ? ownerActive : state.activeTerminalId
 
     set((s) => {
       const sessions = { ...s.sessions }
@@ -509,13 +580,14 @@ export const useStore = create<State>((set, get) => ({
     await persistWorkspace(set, get, workspaceId, {
       terminals,
       layout,
-      activeTerminalId: nextActive
+      activeTerminalId: state.activeWorkspaceId === workspaceId ? nextActive : ownerActive
     })
   },
 
   focusTerminal(terminalId) {
     const current = get()
-    const workspace = current.workspaces.find((w) => w.id === current.activeWorkspaceId)
+    const workspace = current.workspaces.find((w) => w.terminals.some((t) => t.id === terminalId))
+    if (!workspace) return
     const ownerTab =
       workspace?.layout?.type === 'tabs'
         ? workspace.layout.tabs.find((tab) => collectTerminalIds(tab.layout).includes(terminalId))
@@ -525,11 +597,14 @@ export const useStore = create<State>((set, get) => ({
       const unread = { ...s.unread }
       delete unread[terminalId]
       return {
+        activeWorkspaceId: workspace.id,
+        zoomedTerminalId: s.activeTerminalId === terminalId ? s.zoomedTerminalId : null,
+        openWorkspaceIds: [...new Set([...s.openWorkspaceIds, workspace.id])],
+        collapsedWorkspaceIds: s.collapsedWorkspaceIds.filter((id) => id !== workspace.id),
         activeTerminalId: terminalId,
         unread,
-        ...(workspace && layout && layout !== workspace.layout
-          ? { workspaces: s.workspaces.map((w) => (w.id === workspace.id ? { ...w, layout } : w)) }
-          : {})
+        workspaces: s.workspaces.map((w) => w.id === workspace.id
+          ? { ...w, activeTerminalId: terminalId, ...(layout && layout !== workspace.layout ? { layout } : {}) } : w)
       }
     })
     const { activeWorkspaceId } = get()
@@ -550,7 +625,7 @@ export const useStore = create<State>((set, get) => ({
   cycleTerminal(direction) {
     const state = get()
     const workspace = state.workspaces.find((w) => w.id === state.activeWorkspaceId)
-    const ids = collectTerminalIds(workspace?.layout ?? null)
+    const ids = workspace?.terminals.map((t) => t.id) ?? []
     if (ids.length === 0) return
     const current = state.activeTerminalId ? ids.indexOf(state.activeTerminalId) : -1
     const next = ids[(current + direction + ids.length) % ids.length]
@@ -611,7 +686,7 @@ export const useStore = create<State>((set, get) => ({
 
   async detachTerminal(terminalId) {
     const state = get()
-    const workspace = state.workspaces.find((w) => w.id === state.activeWorkspaceId)
+    const workspace = state.workspaces.find((w) => w.terminals.some((terminal) => terminal.id === terminalId))
     const config = workspace?.terminals.find((terminal) => terminal.id === terminalId)
     if (!workspace || !config) return
     try {
@@ -706,8 +781,8 @@ export const useStore = create<State>((set, get) => ({
 
   markUnread(terminalId) {
     // FR-22: indicate, never steal focus.
-    if (get().activeTerminalId === terminalId) return
-    set((s) => (s.unread[terminalId] ? {} : { unread: { ...s.unread, [terminalId]: true } }))
+    if (get().activeTerminalId === terminalId || get().unread[terminalId]) return
+    set((s) => ({ unread: { ...s.unread, [terminalId]: true } }))
   },
 
   async updateSettings(patch) {

@@ -1,315 +1,271 @@
-/**
- * Workspace search, Quick Session, and pane rearrangement.
- *
- * These are the guarantees only a real window can show: that a session starts
- * with no workspace prepared, that the scratch workspace is never duplicated,
- * and that a drag actually rewrites the layout tree the way `moveTerminal`
- * says it does. The tree operations themselves are unit-tested in
- * `tests/layout.test.ts`; this covers the wiring around them.
- */
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+/** Browser tab groups, bookmarks, background sessions and temporary split views. */
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import type { ElectronApplication, Page } from '@playwright/test'
 import { seedE2eSettings } from './settings'
+import { action, configureSession, launchTestApp, newProject, renameSession, savedProject } from './browser-helpers'
 
 let app: ElectronApplication
 let page: Page
 let projectRoot: string
 let userData: string
+let secondRoot: string
+let missingRoot: string
+let firstPid: number | undefined
+const issues: string[] = []
 
 test.describe.configure({ mode: 'serial' })
+function launch(): Promise<ElectronApplication> {
+  return launchTestApp(userData)
+}
 
-/**
- * Real mouse input, not Playwright's `dragTo`. `dragTo` synthesises the drag
- * events directly, so it passes even when the element a user would actually
- * grab is not a drag handle at all — which is exactly how a broken affordance
- * shipped once already.
- */
-async function realDrag(page: Page, from: { x: number; y: number }, to: { x: number; y: number }): Promise<void> {
-  await page.mouse.move(from.x, from.y)
-  await page.mouse.down()
-  for (let step = 1; step <= 10; step += 1) {
-    await page.mouse.move(from.x + ((to.x - from.x) * step) / 10, from.y + ((to.y - from.y) * step) / 10)
-    await page.waitForTimeout(25)
-  }
-  await page.waitForTimeout(150)
-  await page.mouse.up()
+async function sessions(): Promise<Array<{ terminalId: string; pid?: number; status: string }>> {
+  return page.evaluate(async () => {
+    const result = await window.elena.invoke('terminal:list-sessions', undefined)
+    if (!result.ok) throw new Error(result.error.message)
+    return result.data
+  })
+}
+async function shell(name: string): Promise<void> {
+  await configureSession(page)
+  await page.getByRole('button', { name: 'Open terminal' }).click()
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText('Running')
+  await renameSession(page, name)
+}
+async function quickShell(name: string): Promise<void> {
+  const shellName = await page.evaluate(async () => {
+    const result = await window.elena.invoke('shell:list', undefined)
+    if (!result.ok || !result.data[0]) throw new Error('No test shell available')
+    return result.data[0].name
+  })
+  await page.locator('.browser-tabs').getByRole('button', { name: 'New session', exact: true }).click()
+  await page.locator('.chrome-popover__list').getByRole('button', { name: shellName, exact: true }).click()
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText('Running')
+  await renameSession(page, name)
+}
+async function command(value: string): Promise<void> {
+  await page.locator('.pane .xterm-helper-textarea').focus()
+  await page.keyboard.type(value)
+  await page.keyboard.press('Enter')
 }
 
 test.beforeAll(async () => {
-  projectRoot = mkdtempSync(join(tmpdir(), 'elena-v-project-'))
-  userData = mkdtempSync(join(tmpdir(), 'elena-v-userdata-'))
+  projectRoot = mkdtempSync(join(tmpdir(), 'elena-browser-a-'))
+  secondRoot = mkdtempSync(join(tmpdir(), 'elena-browser-b-'))
+  missingRoot = mkdtempSync(join(tmpdir(), 'elena-browser-missing-'))
+  userData = mkdtempSync(join(tmpdir(), 'elena-browser-profile-'))
   seedE2eSettings(userData)
-  writeFileSync(join(projectRoot, 'MARKER.txt'), 'x')
-  mkdirSync(join(projectRoot, 'preset-cwd'))
-  app = await electron.launch({
-    args: ['.', `--user-data-dir=${userData}`],
-    cwd: process.cwd(),
-    env: { ...process.env, ELENA_E2E: '1' }
-  })
+  app = await launch()
   page = await app.firstWindow()
+  page.on('console', (message) => { if (['warning', 'error'].includes(message.type())) issues.push(message.text()) })
   await page.waitForLoadState('domcontentloaded')
 })
-
 test.afterAll(async () => {
   await app?.close()
-  rmSync(projectRoot, { recursive: true, force: true })
-  rmSync(userData, { recursive: true, force: true })
+  for (const path of [projectRoot, secondRoot, missingRoot, userData]) rmSync(path, { recursive: true, force: true })
 })
 
-test('quick session starts an agent with no workspace prepared', async () => {
-  await expect(page.getByText('No workspace yet')).toBeVisible()
-  // The empty state offers one button per preset that has an executable.
-  const quick = page.locator('.empty-state__actions button').nth(1)
-  await expect(quick).toBeVisible()
-  const label = await quick.innerText()
-  await quick.click()
-
-  // A scratch workspace appears and a session is configured in it.
-  await expect(page.locator('.commandbar__title')).toHaveText('Quick Session')
+test('creates projects once and adds shell sessions as browser tabs', async () => {
+  await newProject(page, 'Elena', projectRoot)
+  await shell('Claude')
+  firstPid = (await sessions()).find((s) => s.status === 'running')?.pid
+  expect(firstPid).toBeTruthy()
+  await command("Write-Output ('BROWSER_' + 'BUFFER_OK')")
+  await expect(page.locator('.xterm-rows')).toContainText('BROWSER_BUFFER_OK')
+  await quickShell('Codex')
+  await quickShell('Shell')
+  await expect(page.locator('.browser-tab')).toHaveCount(3)
   await expect(page.locator('.pane')).toHaveCount(1)
-  await expect(page.locator('.pane__title')).toHaveText(label.trim())
-
-  // Pressing it again must reuse the same workspace, not make a second one.
-  await page.getByRole('button', { name: 'New Terminal' }).first().click()
-  await page.getByRole('button', { name: 'Open terminal' }).click()
-  await expect(page.locator('.workspace-item')).toHaveCount(1)
-  await expect(page.locator('.pane')).toHaveCount(2)
+  await page.getByRole('tab', { name: 'Claude', exact: true }).click()
+  await expect(page.locator('.xterm-rows')).toContainText('BROWSER_BUFFER_OK')
+  await expect(page.locator('.sidebar')).toHaveCount(0)
 })
 
-test('workspace search filters the rail', async () => {
-  await page.getByRole('button', { name: 'New workspace' }).click()
-  await page.getByLabel('Name', { exact: true }).fill('Zebra Project')
-  await page.getByLabel('Project root').fill(projectRoot)
-  await page.getByRole('button', { name: 'Create workspace', exact: true }).click()
-  await expect(page.locator('.workspace-item')).toHaveCount(2)
+test('collapse and expand keep the active terminal and all process IDs', async () => {
+  const before = await sessions()
+  await page.getByRole('button', { name: 'Collapse project Elena' }).click()
+  await expect(page.locator('.browser-tab')).toHaveCount(0)
+  await expect(page.locator('.xterm-rows')).toContainText('BROWSER_BUFFER_OK')
+  expect(await sessions()).toEqual(before)
+  await page.getByRole('button', { name: 'Expand project Elena' }).click()
+  await expect(page.locator('.browser-tab')).toHaveCount(3)
+})
 
+test('closing a project keeps agents running and collects new output', async () => {
+  await command("Start-Sleep -Seconds 3; Write-Output ('BACKGROUND_' + 'RESULT')")
+  await action(page, 'Close project')
+  await expect(page.getByText('No project open', { exact: true })).toBeVisible()
+  await expect(page.locator('.project-group')).toHaveCount(0)
+  await expect.poll(async () => (await sessions()).some((s) => s.pid === firstPid && s.status === 'running')).toBe(true)
+  await page.getByRole('button', { name: 'Saved projects', exact: true }).click()
+  const saved = page.locator('.saved-project').filter({ hasText: 'Elena' })
+  await expect(saved).toContainText('3 running')
+  await expect(saved).toContainText('New output', { timeout: 15000 })
+  await page.getByRole('button', { name: 'Open project Elena', exact: true }).click()
+  await expect(page.locator('.xterm-rows')).toContainText('BACKGROUND_RESULT')
+  expect((await sessions()).find((s) => s.pid === firstPid)?.status).toBe('running')
+  await expect(page.locator('.browser-tab')).toHaveCount(3)
+})
+
+test('saved projects reopen without a picker or duplicate workspaces', async () => {
+  await newProject(page, 'API Service', secondRoot)
+  await shell('API agent')
+  await savedProject(page, 'Elena')
+  await savedProject(page, 'Elena')
+  await expect(page.locator('.project-group')).toHaveCount(2)
+  const count = await page.evaluate(async () => {
+    const result = await window.elena.invoke('workspace:list', undefined)
+    return result.ok ? result.data.length : -1
+  })
+  expect(count).toBe(2)
   await page.keyboard.press('Control+Shift+KeyF')
-  await expect(page.locator('#workspace-search')).toBeFocused()
-  await page.keyboard.type('zeb')
-  await expect(page.locator('.workspace-item')).toHaveCount(1)
-  await expect(page.locator('.sidebar__search-count')).toHaveText('1 of 2 workspaces')
-
+  await expect(page.getByLabel('Search saved projects')).toBeFocused()
+  await page.getByLabel('Search saved projects').fill('api')
+  await expect(page.locator('.saved-project')).toHaveCount(1)
+  await page.getByLabel('Search saved projects').fill(secondRoot)
+  await expect(page.locator('.saved-project')).toHaveCount(1)
   await page.keyboard.press('Escape')
-  await expect(page.locator('.workspace-item')).toHaveCount(2)
 })
 
-test('dragging a pane onto another rearranges the layout', async () => {
-  await page.locator('.workspace-item').first().click()
+test('split right and below are temporary views with continuous buffers', async () => {
+  await page.getByRole('tab', { name: 'Claude', exact: true }).click()
+  const layout = await page.evaluate(async () => {
+    const result = await window.elena.invoke('workspace:list', undefined)
+    return result.ok ? result.data.find((w) => w.name === 'Elena')?.layout : null
+  })
+  await page.getByRole('button', { name: 'Split terminal' }).click()
+  await page.getByRole('dialog', { name: 'Split terminal' }).getByRole('button', { name: 'Codex', exact: true }).click()
+  await expect(page.locator('.split--horizontal')).toHaveCount(1)
   await expect(page.locator('.pane')).toHaveCount(2)
-
-  const titlesBefore = await page.locator('.pane__title').allInnerTexts()
-  expect(titlesBefore[0]).not.toBe(titlesBefore[1]) // otherwise a swap is unobservable
-  await expect(page.locator('.split--horizontal')).toHaveCount(1)
-
-  // Grab the metadata strip rather than the title: real users aim at the header
-  // bar generally, and `dragTo` would pass even if only the title were a handle.
-  const grab = (await page.locator('.pane').nth(1).locator('.pane__metadata').boundingBox())!
-  const target = (await page.locator('.pane').nth(0).boundingBox())!
-
-  // Centre of the target is the swap zone: the two panes trade places and the
-  // surrounding structure is untouched.
-  await realDrag(
-    page,
-    { x: grab.x + grab.width / 2, y: grab.y + grab.height / 2 },
-    { x: target.x + target.width / 2, y: target.y + target.height / 2 }
-  )
-  await expect
-    .poll(async () => (await page.locator('.pane__title').allInnerTexts()).join('|'))
-    .toBe([...titlesBefore].reverse().join('|'))
-  await expect(page.locator('.split--horizontal')).toHaveCount(1)
-  await expect(page.locator('.split--vertical')).toHaveCount(0)
-
-  // An edge drop is a different operation: it re-splits along the other axis.
-  const grab2 = (await page.locator('.pane').nth(1).locator('.pane__metadata').boundingBox())!
-  const target2 = (await page.locator('.pane').nth(0).boundingBox())!
-  await realDrag(
-    page,
-    { x: grab2.x + grab2.width / 2, y: grab2.y + grab2.height / 2 },
-    { x: target2.x + target2.width / 2, y: target2.y + 12 }
-  )
+  await expect(page.locator('.pane').first().locator('.xterm-rows')).toContainText('BACKGROUND_RESULT')
+  const separator = page.getByRole('separator', { name: 'Resize panes' })
+  await separator.focus()
+  await page.keyboard.press('Shift+ArrowRight')
+  await expect(separator).toHaveAttribute('aria-valuenow', '60')
+  const divider = (await separator.boundingBox())!
+  const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest('[role="separator"]')?.getAttribute('aria-label'), { x: divider.x + divider.width / 2, y: divider.y + divider.height / 2 })
+  expect(hit).toBe('Resize panes')
+  await page.mouse.move(divider.x + divider.width / 2, divider.y + divider.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(divider.x + 70, divider.y + divider.height / 2, { steps: 12 })
+  await page.mouse.up()
+  await expect(separator).not.toHaveAttribute('aria-valuenow', '60')
+  await page.getByRole('button', { name: 'Return to single terminal' }).click()
+  await page.getByRole('button', { name: 'Split terminal' }).click()
+  await page.getByRole('button', { name: 'Below', exact: true }).click()
+  await page.getByRole('dialog', { name: 'Split terminal' }).getByRole('button', { name: 'Codex', exact: true }).click()
   await expect(page.locator('.split--vertical')).toHaveCount(1)
-  await expect(page.locator('.pane')).toHaveCount(2)
-  await expect
-    .poll(async () => (await page.locator('.pane__title').allInnerTexts()).join('|'))
-    .toBe(titlesBefore.join('|'))
-})
-
-test('the pane action buttons still click rather than starting a drag', async () => {
-  // The header is draggable; `draggable={false}` on the actions is what keeps
-  // a press on a button from being swallowed by a drag session.
-  await page.locator('.pane').first().getByRole('button', { name: 'Zoom pane' }).click()
+  const after = await page.evaluate(async () => {
+    const result = await window.elena.invoke('workspace:list', undefined)
+    return result.ok ? result.data.find((w) => w.name === 'Elena')?.layout : null
+  })
+  expect(after).toEqual(layout)
+  await page.getByRole('tab', { name: 'API agent', exact: true }).click()
   await expect(page.locator('.pane')).toHaveCount(1)
-  await page.locator('.pane').first().getByRole('button', { name: 'Zoom pane' }).click()
-  await expect(page.locator('.pane')).toHaveCount(2)
+  await page.getByRole('tab', { name: 'Claude', exact: true }).click()
+  await expect(page.locator('.pane')).toHaveCount(1)
 })
 
-test('a narrow pane folds its icon row into one menu instead of overlapping', async () => {
-  const wide = page.locator('.pane').first()
-  // Wide: the detach action is a first-class icon and search is not an icon.
-  await expect(wide.getByRole('button', { name: 'Open in new window' })).toBeVisible()
-  await expect(wide.getByRole('button', { name: 'Find in terminal' })).toHaveCount(0)
-
-  // Panes may be stacked vertically here, in which case each is still full
-  // width — shrink the window itself rather than assuming a side-by-side split.
-  await app.evaluate(({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0]
-    window?.setMinimumSize(320, 240)
-    window?.setContentSize(560, 640)
-  })
-
-  const pane = page.locator('.pane').first()
-  // Assert the precondition, so a layout change gives a clear failure rather
-  // than a confusing one about a missing class.
-  await expect.poll(async () => Math.round((await pane.boundingBox())!.width)).toBeLessThan(420)
-  await expect(pane).toHaveClass(/pane--compact/)
-  // One button only: the hamburger. This is the regression that mattered —
-  // five icons in a narrow header landed on top of the status badge.
-  await expect(pane.locator('.pane__actions button')).toHaveCount(1)
-
-  const identity = (await pane.locator('.pane__identity').boundingBox())!
-  const actions = (await pane.locator('.pane__actions').boundingBox())!
-  expect(identity.x + identity.width).toBeLessThanOrEqual(actions.x + 1)
-
-  // Nothing became unreachable: every action moved into the menu.
-  await pane.getByRole('button', { name: 'Session menu' }).click()
-  for (const item of ['Open in new window', 'Restart', 'Stop', 'Zoom pane', 'Rename', 'Find in terminal', 'Close']) {
-    await expect(page.getByRole('menuitem', { name: item, exact: true })).toBeVisible()
-  }
-  await page.keyboard.press('Escape')
-
-  await app.evaluate(({ BrowserWindow }) => {
-    const window = BrowserWindow.getAllWindows()[0]
-    window?.setContentSize(1440, 1024)
-    window?.setMinimumSize(1180, 720)
-  })
-  await expect(page.locator('.pane').first()).not.toHaveClass(/pane--compact/)
+test('all tabs searches sessions and unfolds a selected project', async () => {
+  await page.getByRole('button', { name: 'Collapse project API Service' }).click()
+  await page.getByRole('button', { name: 'All tabs', exact: true }).click()
+  await page.getByLabel('Search open tabs').fill('API')
+  await expect(page.locator('.all-tab')).toHaveCount(1)
+  await page.locator('.all-tab').click()
+  await expect(page.getByRole('tab', { name: 'API agent', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.getByRole('button', { name: 'Collapse project API Service' })).toBeVisible()
 })
 
-test('Ctrl+Alt+Arrow swaps panes from the keyboard', async () => {
-  const before = await page.locator('.pane__title').allInnerTexts()
-  await page.locator('.pane').first().click()
-  await page.keyboard.press('Control+Alt+ArrowRight')
-  await expect
-    .poll(async () => (await page.locator('.pane__title').allInnerTexts()).join('|'))
-    .toBe([...before].reverse().join('|'))
-})
-
-test('quick session from the palette reuses the scratch workspace', async () => {
-  const workspacesBefore = await page.locator('.workspace-item').count()
-  const panesBefore = await page.locator('.pane').count()
-
-  await page.keyboard.press('Control+KeyK')
-  await expect(page.locator('.palette__input')).toBeVisible()
-  await page.locator('.palette__input').fill('Quick session')
-  await page.keyboard.press('Enter')
-
-  await expect(page.locator('.commandbar__title')).toHaveText('Quick Session')
-  await expect(page.locator('.pane')).toHaveCount(panesBefore + 1)
-  // The whole point of the fixed id: no second scratch workspace appears.
-  await expect(page.locator('.workspace-item')).toHaveCount(workspacesBefore)
-})
-
-test('the search shortcut does not steal focus out of an open dialog', async () => {
-  await page.getByRole('button', { name: 'New workspace' }).click()
+test('the search shortcut dismisses a modal before moving focus', async () => {
+  await page.keyboard.press('Control+Shift+KeyN')
   await expect(page.getByLabel('Name', { exact: true })).toBeVisible()
-
   await page.keyboard.press('Control+Shift+KeyF')
-
-  // The dialog is dismissed rather than left open behind a focused input.
   await expect(page.getByLabel('Name', { exact: true })).toHaveCount(0)
-  await expect(page.locator('#workspace-search')).toBeFocused()
+  await expect(page.getByLabel('Search saved projects')).toBeFocused()
+  await page.keyboard.press('Escape')
 })
 
-test('detaching opens a real second window and reattaching restores the pane', async () => {
-  const paneCount = await page.locator('.pane').count()
-
-  // Detach a pane that is genuinely running. The Quick Session panes launch an
-  // agent CLI, which a clean CI runner does not have — there they sit in an
-  // error state, and "the process kept running" cannot be shown with one.
-  let index = -1
-  for (let i = 0; i < paneCount; i += 1) {
-    if ((await page.locator('.pane').nth(i).locator('.badge').first().innerText()) === 'Running') {
-      index = i
-      break
-    }
-  }
-  expect(index, 'no running pane to detach').toBeGreaterThanOrEqual(0)
-
-  const source = page.locator('.pane').nth(index)
-  // A unique title makes "it came back to the same slot" checkable, since
-  // several panes share the default shell name.
-  await source.locator('.pane__title').dblclick()
-  await page.getByLabel('Terminal name').fill('Detach Me')
-  await page.getByRole('button', { name: 'Save name' }).click()
-  const detachedTitle = 'Detach Me'
-  await expect(source.locator('.pane__title')).toHaveText(detachedTitle)
-
-  await source.getByRole('button', { name: 'Open in new window' }).click()
-
-  await expect.poll(() => app.windows().length).toBe(2)
-  const detachedPage = app.windows().find((w) => w !== page)!
-  await detachedPage.waitForLoadState('domcontentloaded')
-
-  // The new window renders exactly that one terminal, with the seam notice.
-  await expect(detachedPage.locator('.pane')).toHaveCount(1)
-  await expect(detachedPage.locator('.pane__title')).toHaveText(detachedTitle)
-  await expect(detachedPage.locator('.detached-notice')).toBeVisible()
-  await expect(detachedPage.locator('.sidebar')).toHaveCount(0)
-
-  // Visibility is not enough: the window has no command bar, so the pane must
-  // fill it. A missing `.app--detached` row rule left the terminal ~5px tall
-  // while every `toBeVisible` assertion still passed.
-  const paneBox = (await detachedPage.locator('.pane').boundingBox())!
-  const innerHeight = await detachedPage.evaluate(() => window.innerHeight)
-  expect(paneBox.height).toBeGreaterThan(innerHeight * 0.6)
-
-  // The main window keeps the slot and offers it back.
-  await expect(page.locator('.pane--detached')).toHaveCount(1)
-  // The slot is kept, not removed: the total is unchanged.
-  await expect(page.locator('.pane')).toHaveCount(paneCount)
-
-  // The PTY never moved: it is still running, in the new window.
-  await expect(detachedPage.locator('.pane').locator('.badge').first()).toHaveText('Running')
-
-  await page.getByRole('button', { name: 'Bring back' }).click()
-  await expect.poll(() => app.windows().length).toBe(1)
-  await expect(page.locator('.pane--detached')).toHaveCount(0)
-  await expect(page.locator('.pane')).toHaveCount(paneCount)
-  // Reattaching is exact: the terminal is back in the slot it left, not
-  // appended somewhere new.
-  await expect(page.locator('.pane').nth(index).locator('.pane__title')).toHaveText(detachedTitle)
-  await expect(page.locator('.pane').nth(index).locator('.badge').first()).toHaveText('Running')
+test('a missing bookmarked folder stays saved and shows an actionable error', async () => {
+  await newProject(page, 'Missing Folder', missingRoot)
+  await action(page, 'Close project')
+  rmSync(missingRoot, { recursive: true, force: true })
+  await savedProject(page, 'Missing Folder')
+  await expect(page.locator('.toast')).toContainText('not usable')
+  await expect(page.locator('.project-group__name').filter({ hasText: 'Missing Folder' })).toHaveCount(0)
+  await page.keyboard.press('Control+KeyB')
+  await expect(page.getByRole('button', { name: 'Open project Missing Folder', exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
 })
 
-test('closing a detached window reattaches instead of stranding it', async () => {
-  const paneCount = await page.locator('.pane').count()
-  await page.locator('.pane').first().getByRole('button', { name: 'Open in new window' }).click()
-  await expect.poll(() => app.windows().length).toBe(2)
-
-  const detachedPage = app.windows().find((w) => w !== page)!
-  await detachedPage.close()
-
-  await expect.poll(() => app.windows().length).toBe(1)
-  await expect(page.locator('.pane--detached')).toHaveCount(0)
-  await expect(page.locator('.pane')).toHaveCount(paneCount)
+test('delete saved project confirms, removes configuration and keeps project files', async () => {
+  writeFileSync(join(secondRoot, 'MARKER.txt'), 'keep this file')
+  await page.keyboard.press('Control+KeyB')
+  await page.getByRole('button', { name: 'Delete saved project API Service', exact: true }).click()
+  await expect(page.getByRole('alertdialog')).toContainText('Running sessions will stop')
+  await page.getByRole('button', { name: 'Delete saved project', exact: true }).click()
+  await expect(page.locator('.project-group__name')).toHaveText('Elena')
+  expect(readFileSync(join(secondRoot, 'MARKER.txt'), 'utf8')).toBe('keep this file')
 })
 
-test('detached placement is not persisted across a relaunch', async () => {
-  await page.locator('.pane').first().getByRole('button', { name: 'Open in new window' }).click()
-  await expect.poll(() => app.windows().length).toBe(2)
-
+test('relaunch restores open and collapsed groups, never processes or detached placement', async () => {
+  await page.getByRole('button', { name: 'Collapse project Elena' }).click()
   await app.close()
-  app = await electron.launch({
-    args: ['.', `--user-data-dir=${userData}`],
-    cwd: process.cwd(),
-    env: { ...process.env, ELENA_E2E: '1' }
-  })
+  app = await launch()
   page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
+  await expect(page.getByRole('button', { name: 'Expand project Elena' })).toBeVisible()
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText('Not started')
+  expect(await sessions()).toHaveLength(0)
+  await expect(page.locator('.pane')).toHaveCount(1)
+  await page.getByRole('button', { name: 'Expand project Elena' }).click()
+  await expect(page.locator('.browser-tab')).toHaveCount(3)
+  await expect(page.getByRole('tab', { name: 'Claude', exact: true })).toHaveAttribute('aria-selected', 'true')
+})
 
-  expect(app.windows().length).toBe(1)
-  await expect(page.locator('.pane--detached')).toHaveCount(0)
+test('closing all groups survives relaunch while bookmarks remain available', async () => {
+  await action(page, 'Close project')
+  await app.close()
+  app = await launch()
+  page = await app.firstWindow()
+  await page.waitForLoadState('domcontentloaded')
+  await expect(page.getByText('No project open', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Open saved project', exact: true }).click()
+  await expect(page.locator('.saved-project')).toHaveCount(2)
+  await page.getByRole('button', { name: 'Open project Elena', exact: true }).click()
+  await expect(page.locator('.browser-tab')).toHaveCount(3)
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText('Not started')
+})
+
+test('browser tabs fit minimum window size and keyboard navigation selects sessions', async () => {
+  await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0]?.setContentSize(1180, 720))
+  await page.getByRole('tab', { name: 'Claude', exact: true }).focus()
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByRole('tab', { name: 'Codex', exact: true })).toHaveAttribute('aria-selected', 'true')
+  await page.getByRole('button', { name: 'All tabs', exact: true }).click()
+  await page.getByLabel('Search open tabs').fill('no matching session')
+  await expect(page.getByText('No matches.', { exact: true })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'All tabs', exact: true })).toBeFocused()
+  const viewport = await page.evaluate(() => window.innerWidth)
+  const bookmark = (await page.getByRole('button', { name: 'Saved projects', exact: true }).boundingBox())!
+  expect(bookmark.x + bookmark.width).toBeLessThanOrEqual(viewport)
+  expect(issues).toEqual([])
+})
+
+test('overflow keeps active tabs and the new-session button reachable', async () => {
+  for (let i = 0; i < 7; i += 1) await quickShell(`Long session ${i} with a descriptive title`)
+  const strip = page.locator('.browser-tabs__scroll')
+  await expect.poll(() => strip.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true)
+  const selected = (await page.locator('.browser-tab--active').boundingBox())!
+  const bounds = (await strip.boundingBox())!
+  expect(selected.x).toBeGreaterThanOrEqual(bounds.x - 1)
+  expect(selected.x + selected.width).toBeLessThanOrEqual(bounds.x + bounds.width + 1)
+  await expect(page.locator('.browser-tabs').getByRole('button', { name: 'New session', exact: true })).toBeInViewport()
+  await page.getByRole('button', { name: 'All tabs', exact: true }).click()
+  await page.getByLabel('Search open tabs').fill('Long session 6')
+  await expect(page.locator('.all-tab')).toHaveCount(1)
+  await page.locator('.all-tab').click()
+  await expect(page.locator('.browser-tab--active .browser-tab__title')).toHaveText('Long session 6 with a descriptive title')
 })

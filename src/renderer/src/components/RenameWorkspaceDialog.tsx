@@ -36,10 +36,10 @@ export function RenameWorkspaceDialog({ workspace, onClose }: Props): React.JSX.
         onMouseDown={(event) => event.stopPropagation()}
       >
         <h2 className="dialog__title" id="rename-workspace-title">
-          Rename workspace
+          Rename project
         </h2>
         <div className="dialog__row">
-          <label htmlFor="rename-workspace-name">Workspace name</label>
+          <label htmlFor="rename-workspace-name">Project name</label>
           <input
             id="rename-workspace-name"
             autoFocus

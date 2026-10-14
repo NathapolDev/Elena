@@ -88,7 +88,7 @@ function subscribe(cwd: string, listener: () => void): () => void {
 export function useGitBranch(cwd: string): GitBranchInfo | null | undefined {
   // Stable per cwd: an inline subscriber would tear the watcher down and
   // re-read on every render of the pane.
-  const subscribeToCwd = useCallback((listener: () => void) => subscribe(cwd, listener), [cwd])
+  const subscribeToCwd = useCallback((listener: () => void) => cwd ? subscribe(cwd, listener) : () => {}, [cwd])
   const getSnapshot = useCallback(() => watchers.get(cwd)?.snapshot, [cwd])
   return useSyncExternalStore(subscribeToCwd, getSnapshot)
 }

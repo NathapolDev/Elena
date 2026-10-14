@@ -1,13 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChatCircleIcon } from '@phosphor-icons/react/ChatCircle'
-import { FolderIcon } from '@phosphor-icons/react/Folder'
-import { GearSixIcon } from '@phosphor-icons/react/GearSix'
-import { InfoIcon } from '@phosphor-icons/react/Info'
-import { ListIcon } from '@phosphor-icons/react/List'
-import { PlusIcon } from '@phosphor-icons/react/Plus'
-import { SquaresFourIcon } from '@phosphor-icons/react/SquaresFour'
-import { collectTerminalIds } from '@shared/layout'
-import type { UpdateState } from '@shared/types'
+import type { UpdateState, Workspace } from '@shared/types'
 import { call, on } from './lib/api'
 import { dispatchTerminalData } from './lib/terminalBus'
 import {
@@ -18,8 +10,10 @@ import {
   remeasureTerminalFonts
 } from './lib/terminalRegistry'
 import { selectActiveWorkspace, useStore } from './state/store'
-import { loadSidebarHidden, loadSidebarWidth, saveSidebarHidden, saveSidebarWidth } from './lib/uiPrefs'
-import { Sidebar, WORKSPACE_SEARCH_INPUT_ID } from './components/Sidebar'
+import { saveBrowserPrefs } from './lib/uiPrefs'
+import { BrowserChrome, splitViewNode } from './components/BrowserChrome'
+import type { ChromePanel, SplitSelection } from './components/BrowserChrome'
+import { DetachedPanePlaceholder } from './components/DetachedPanePlaceholder'
 import { SplitView } from './components/SplitView'
 import { TerminalPane } from './components/TerminalPane'
 import { NewWorkspaceDialog } from './components/NewWorkspaceDialog'
@@ -33,7 +27,6 @@ import { CommandPalette } from './components/CommandPalette'
 import type { Command } from './components/CommandPalette'
 import { Toasts } from './components/Toasts'
 import { ChangesDialog } from './components/ChangesDialog'
-import { ChangesButton } from './components/ChangesButton'
 
 type Modal =
   | 'none'
@@ -81,8 +74,6 @@ export function App(): React.JSX.Element {
   const setResolvedTheme = useStore((s) => s.setResolvedTheme)
   const pushToast = useStore((s) => s.pushToast)
   const pushError = useStore((s) => s.pushError)
-  const updateRatio = useStore((s) => s.updateRatio)
-  const activateTab = useStore((s) => s.activateTab)
   const cycleTerminal = useStore((s) => s.cycleTerminal)
   const toggleZoom = useStore((s) => s.toggleZoom)
   const requestTerminalClose = useStore((s) => s.requestTerminalClose)
@@ -90,10 +81,8 @@ export function App(): React.JSX.Element {
   const confirmTerminalClose = useStore((s) => s.confirmTerminalClose)
   const stopTerminal = useStore((s) => s.stopTerminal)
   const deleteWorkspace = useStore((s) => s.deleteWorkspace)
-  const arrangeSpatialGrid = useStore((s) => s.arrangeSpatialGrid)
   const presets = useStore((s) => s.presets)
   const startQuickSession = useStore((s) => s.startQuickSession)
-  const swapWithNeighbour = useStore((s) => s.swapWithNeighbour)
   const detachTerminal = useStore((s) => s.detachTerminal)
 
   // A preset with no executable cannot start anything, so it is not offered as
@@ -104,22 +93,21 @@ export function App(): React.JSX.Element {
   const [modal, setModal] = useState<Modal>('none')
   const [updateState, setUpdateState] = useState<UpdateState | null>(null)
   const readyToastVersion = useRef<string | null>(null)
-  const [sidebarWidth, setSidebarWidth] = useState(loadSidebarWidth)
-  const [sidebarHidden, setSidebarHidden] = useState(loadSidebarHidden)
+  const openWorkspaceIds = useStore((s) => s.openWorkspaceIds)
+  const collapsedWorkspaceIds = useStore((s) => s.collapsedWorkspaceIds)
+  const activeWorkspaceId = useStore((s) => s.activeWorkspaceId)
+  const workspaces = useStore((s) => s.workspaces)
+  const [panel, setPanel] = useState<ChromePanel>(null)
+  const [split, setSplit] = useState<SplitSelection | null>(null)
+  const [searchTerminalId, setSearchTerminalId] = useState<string | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<Workspace | null>(null)
+  const swapWithNeighbour = useCallback((_direction: 1 | -1) => {
+    setSplit((current) => current ? { ...current, ids: [current.ids[1], current.ids[0]] } : null)
+  }, [])
 
-  // The rail has to be on screen before its input can take focus, and any open
-  // dialog has to be dismissed first: moving focus to a node behind an
-  // aria-modal dialog would break the focus trap (NFR-22).
   const focusWorkspaceSearch = useCallback(() => {
     setModal('none')
-    setSidebarHidden(false)
-    requestAnimationFrame(() => {
-      const input = document.getElementById(WORKSPACE_SEARCH_INPUT_ID)
-      if (input instanceof HTMLInputElement) {
-        input.focus()
-        input.select()
-      }
-    })
+    setPanel('saved')
   }, [])
 
   const applyUpdateState = useCallback(
@@ -153,8 +141,19 @@ export function App(): React.JSX.Element {
     }
   }, [applyUpdateState, pushError])
 
-  useEffect(() => saveSidebarWidth(sidebarWidth), [sidebarWidth])
-  useEffect(() => saveSidebarHidden(sidebarHidden), [sidebarHidden])
+  useEffect(() => {
+    if (ready && !detachedTerminalId) saveBrowserPrefs({ openWorkspaceIds, collapsedWorkspaceIds, activeWorkspaceId })
+  }, [ready, openWorkspaceIds, collapsedWorkspaceIds, activeWorkspaceId])
+
+  useEffect(() => useStore.subscribe((state, previous) => {
+    if (state.activeWorkspaceId !== previous.activeWorkspaceId) {
+      setSplit(null)
+      setSearchTerminalId(null)
+    } else if (state.activeTerminalId !== previous.activeTerminalId) {
+      setSplit((current) => current?.ids.includes(state.activeTerminalId ?? '') ? current : null)
+      setSearchTerminalId(null)
+    }
+  }), [])
 
   /* ---------- one subscription per event channel ---------- */
   useEffect(() => {
@@ -166,7 +165,12 @@ export function App(): React.JSX.Element {
         // Read through `getState` so ownership changes never resubscribe.
         const detached = useStore.getState().detachedTerminalIds
         const mine = detachedTerminalId ? terminalId === detachedTerminalId : !detached.includes(terminalId)
-        if (mine) dispatchTerminalData(terminalId, chunk)
+        // Up to 62.5 flushes/s × running terminals × their owning window.
+        // O(1) unread lookup per chunk; no project aggregation or IPC here.
+        if (mine) {
+          if (!detachedTerminalId) useStore.getState().markUnread(terminalId)
+          dispatchTerminalData(terminalId, chunk)
+        }
       }),
       on('window:detached-changed', ({ terminalIds }) =>
         useStore.getState().setDetachedTerminalIds(terminalIds, detachedTerminalId)
@@ -239,35 +243,28 @@ export function App(): React.JSX.Element {
     }
   }, [])
 
-  const terminalIds = useMemo(() => collectTerminalIds(workspace?.layout ?? null), [workspace?.layout])
-
   const commands = useMemo<Command[]>(
     () => [
-      { id: 'new-terminal', label: 'New terminal', hint: 'Ctrl+T', run: () => setModal('new-terminal') },
+      { id: 'new-terminal', label: 'New session', hint: 'Ctrl+T', run: () => setPanel('new') },
       ...quickPresets.map((preset) => ({
         id: `quick-session-${preset.id}`,
         label: `Quick session: ${preset.name}`,
         hint: 'No workspace needed',
         run: () => void startQuickSession(preset.id)
       })),
-      { id: 'new-workspace', label: 'New workspace', hint: 'Ctrl+Shift+N', run: () => setModal('new-workspace') },
+      { id: 'new-workspace', label: 'New project', hint: 'Ctrl+Shift+N', run: () => setModal('new-workspace') },
       { id: 'settings', label: 'Open settings', hint: 'Ctrl+,', run: () => setModal('settings') },
       {
-        id: 'toggle-sidebar',
-        label: 'Toggle sidebar',
+        id: 'saved-projects',
+        label: 'Saved projects',
         hint: 'Ctrl+B',
-        run: () => setSidebarHidden((hidden) => !hidden)
+        run: () => setPanel((current) => current === 'saved' ? null : 'saved')
       },
       {
         id: 'search-workspaces',
-        label: 'Search workspaces',
+        label: 'Search saved projects',
         hint: 'Ctrl+Shift+F',
         run: focusWorkspaceSearch
-      },
-      {
-        id: 'arrange-grid',
-        label: 'Arrange sessions in 2×2 grid',
-        run: () => void arrangeSpatialGrid()
       },
       { id: 'theme-light', label: 'Theme: Light', run: () => void useStore.getState().updateSettings({ themePreference: 'light' }) },
       { id: 'theme-dark', label: 'Theme: Dark', run: () => void useStore.getState().updateSettings({ themePreference: 'dark' }) },
@@ -317,7 +314,6 @@ export function App(): React.JSX.Element {
     ],
     [
       activeTerminalId,
-      arrangeSpatialGrid,
       cycleTerminal,
       detachTerminal,
       focusWorkspaceSearch,
@@ -380,6 +376,7 @@ export function App(): React.JSX.Element {
 
       if (key === 'k') {
         event.preventDefault()
+        setPanel(null)
         setModal((current) => (current === 'palette' ? 'none' : 'palette'))
         return
       }
@@ -393,22 +390,26 @@ export function App(): React.JSX.Element {
       }
       if (key === 't' && !event.shiftKey) {
         event.preventDefault()
-        if (workspace) setModal('new-terminal')
+        setModal('none')
+        setPanel('new')
         return
       }
       if (key === 'n' && event.shiftKey) {
         event.preventDefault()
+        setPanel(null)
         setModal('new-workspace')
         return
       }
       if (key === ',') {
         event.preventDefault()
+        setPanel(null)
         setModal('settings')
         return
       }
       if (key === 'b' && !event.shiftKey) {
         event.preventDefault()
-        setSidebarHidden((hidden) => !hidden)
+        setModal('none')
+        setPanel((current) => current === 'saved' ? null : 'saved')
         return
       }
       if (key === 'w' && activeTerminalId) {
@@ -444,8 +445,7 @@ export function App(): React.JSX.Element {
       focusWorkspaceSearch,
       requestTerminalClose,
       swapWithNeighbour,
-      toggleZoom,
-      workspace
+      toggleZoom
     ]
   )
 
@@ -465,18 +465,14 @@ export function App(): React.JSX.Element {
     ? workspace?.terminals.find((t) => t.id === activeTerminalId)
     : undefined
   const pendingCloseConfig = pendingCloseTerminalId
-    ? workspace?.terminals.find((t) => t.id === pendingCloseTerminalId)
+    ? workspaces.flatMap((w) => w.terminals).find((t) => t.id === pendingCloseTerminalId)
     : undefined
   const detachedConfig = detachedTerminalId
     ? workspace?.terminals.find((t) => t.id === detachedTerminalId)
     : undefined
 
-  const bodyClassName = [
-    'app__body',
-    sidebarHidden ? 'app__body--sidebar-hidden' : ''
-  ]
-    .filter(Boolean)
-    .join(' ')
+  const effectiveSplit = split && workspace && split.workspaceId === workspace.id && split.ids.includes(activeTerminalId ?? '') && split.ids.every((id) => workspace.terminals.some((t) => t.id === id)) ? split : null
+  const singleConfig = zoomedConfig ?? activeConfig
 
   if (detachedTerminalId) {
     return (
@@ -521,163 +517,57 @@ export function App(): React.JSX.Element {
   }
 
   return (
-    <div className="app">
-      <header className="commandbar">
-        <button
-          type="button"
-          className="button button--icon"
-          onClick={() => setSidebarHidden((hidden) => !hidden)}
-          aria-expanded={!sidebarHidden}
-          aria-controls="sidebar"
-          aria-label={sidebarHidden ? 'Show sidebar' : 'Hide sidebar'}
-          title={`${sidebarHidden ? 'Show' : 'Hide'} sidebar (Ctrl+B)`}
-        >
-          <ListIcon size={20} />
-        </button>
-        <div className="commandbar__brand" aria-label="Elena">
-          <img className="commandbar__mascot" src="./elena.png" alt="" />
-          <span className="commandbar__brand-name">Elena</span>
-        </div>
-        {workspace && <span className="commandbar__divider" />}
-        <div className="commandbar__workspace">
-          {workspace && <span className="commandbar__title">{workspace.name}</span>}
-          {workspace && (
-            <>
-              <span className="commandbar__divider" />
-              <span className="commandbar__path" title={workspace.projectRoot}>
-                <FolderIcon size={16} /> {workspace.projectRoot}
-              </span>
-              <span className="commandbar__divider" />
-              <span className="commandbar__sessions">{terminalIds.length} sessions</span>
-            </>
-          )}
-        </div>
-        <span className="commandbar__spacer" />
-        <button
-          type="button"
-          className="button button--primary"
-          onClick={() => setModal('new-terminal')}
-          disabled={!workspace}
-          aria-label="New Terminal"
-        >
-          <PlusIcon size={18} /> New session
-        </button>
-        <button
-          type="button"
-          className="button"
-          onClick={() => void arrangeSpatialGrid()}
-          disabled={!workspace?.layout}
-          aria-label="Arrange spatial grid"
-          title="Arrange sessions into pages of up to four"
-        >
-          <SquaresFourIcon size={18} /> Layout: 2×2
-        </button>
-        <ChangesButton workspaceId={workspace?.id} dialogOpen={modal === 'changes'} onClick={() => setModal('changes')} />
-        <button
-          type="button"
-          className="icon-button"
-          onClick={() => setModal('about')}
-          aria-label="About Elena"
-          title="About Elena"
-        >
-          <InfoIcon size={19} />
-        </button>
-        <button
-          type="button"
-          className="icon-button"
-          onClick={() => setModal('settings')}
-          aria-label="Settings"
-        >
-          <GearSixIcon size={19} />
-        </button>
-      </header>
-
-      <div
-        className={bodyClassName}
-        style={{ '--sidebar-width': `${sidebarWidth}px` } as React.CSSProperties}
-      >
-        {!sidebarHidden && (
-          <Sidebar
-            workspace={workspace}
-            width={sidebarWidth}
-            onWidthChange={setSidebarWidth}
-            onHide={() => setSidebarHidden(true)}
-            onNewWorkspace={() => setModal('new-workspace')}
-            onNewTerminal={() => setModal('new-terminal')}
-            onRenameWorkspace={() => setModal('rename-workspace')}
-            onDeleteWorkspace={() => setModal('delete-workspace')}
-          />
+    <div className="app app--browser">
+      <BrowserChrome
+        panel={panel} onPanel={setPanel}
+        onNewWorkspace={() => setModal('new-workspace')}
+        onConfigure={() => setModal('new-terminal')}
+        onRenameWorkspace={() => setModal('rename-workspace')}
+        onDeleteWorkspace={(target) => { setDeleteTarget(target); setModal('delete-workspace') }}
+        onRenameTerminal={() => setModal('rename-terminal')}
+        onSettings={() => setModal('settings')} onAbout={() => setModal('about')}
+        onChanges={() => setModal('changes')} changesOpen={modal === 'changes'}
+        onSearch={() => setSearchTerminalId((id) => id === activeTerminalId ? null : activeTerminalId)}
+        split={effectiveSplit} onSplit={setSplit}
+      />
+      <main className="app__main" id="workspace-terminal" role="tabpanel" aria-label="Active terminal">
+        {!ready && <div className="empty-state">Loading…</div>}
+        {ready && !workspace && (
+          <div className="empty-state">
+            <div className="empty-state__title">{workspaces.length ? 'No project open' : 'No projects yet'}</div>
+            <p>Open a saved project or choose a folder for a new one.</p>
+            <div className="empty-state__actions">
+              {workspaces.length > 0 && <button type="button" className="button button--primary" onClick={() => setPanel('saved')}>Open saved project</button>}
+              <button type="button" className="button" onClick={() => setModal('new-workspace')}>New project</button>
+            </div>
+          </div>
         )}
-
-        <main className="app__main">
-          {!ready && <div className="empty-state">Loading…</div>}
-
-          {ready && !workspace && (
-            <div className="empty-state">
-              <div className="empty-state__title">No workspace yet</div>
-              <p style={{ margin: 0, maxWidth: 460 }}>
-                A workspace binds a project folder to a set of terminal sessions. Layout and configuration are
-                restored on relaunch; processes are not restarted automatically.
-              </p>
-              <div className="empty-state__actions">
-                <button type="button" className="button button--primary" onClick={() => setModal('new-workspace')}>
-                  Create Workspace
-                </button>
-              </div>
-              {quickPresets.length > 0 && (
-                <>
-                  <p className="empty-state__aside">
-                    Or start an agent right away — Elena keeps these in a scratch workspace on your home
-                    folder.
-                  </p>
-                  <div className="empty-state__actions">
-                    {quickPresets.map((preset) => (
-                      <button
-                        key={preset.id}
-                        type="button"
-                        className="button"
-                        onClick={() => void startQuickSession(preset.id)}
-                        title={`Start ${preset.name} without creating a workspace`}
-                      >
-                        <ChatCircleIcon size={17} /> {preset.name}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          {ready && workspace && !workspace.layout && (
-            <div className="empty-state">
-              <div className="empty-state__title">{workspace.name}</div>
-              <p style={{ margin: 0 }}>No terminals in this workspace yet.</p>
-              <div className="empty-state__actions">
-                <button type="button" className="button button--primary" onClick={() => setModal('new-terminal')}>
-                  New Terminal
-                </button>
-              </div>
-            </div>
-          )}
-
-          {ready && workspace?.layout && (
-            <div className="layout">
-              {zoomedConfig ? (
-                <TerminalPane config={zoomedConfig} isActive />
-              ) : (
-                <SplitView
-                  node={workspace.layout}
-                  terminals={workspace.terminals}
-                  activeTerminalId={activeTerminalId}
-                  detachedTerminalIds={detachedTerminalIds}
-                  onRatioChange={updateRatio}
-                  onActivateTab={activateTab}
-                />
-              )}
-            </div>
-          )}
-        </main>
-      </div>
+        {ready && workspace && !activeConfig && (
+          <div className="empty-state">
+            <div className="empty-state__title">{workspace.name}</div>
+            <p>No sessions in this project yet.</p>
+            <button type="button" className="button" onClick={() => setPanel('new')}>New session</button>
+          </div>
+        )}
+        {ready && workspace && singleConfig && (
+          <div className="layout">
+            {effectiveSplit && !zoomedConfig ? (
+              <SplitView
+                node={splitViewNode(effectiveSplit)} terminals={workspace.terminals}
+                activeTerminalId={activeTerminalId} detachedTerminalIds={detachedTerminalIds}
+                chrome="minimal" searchTerminalId={searchTerminalId} onSearchClose={() => setSearchTerminalId(null)}
+                onRatioChange={(_path, ratio) => setSplit((current) => current?.workspaceId === effectiveSplit.workspaceId && current.ids[0] === effectiveSplit.ids[0] && current.ids[1] === effectiveSplit.ids[1] ? { ...current, ratio } : current)}
+                onActivateTab={() => {}}
+              />
+            ) : detachedTerminalIds.includes(singleConfig.id) ? (
+              <DetachedPanePlaceholder config={singleConfig} />
+            ) : (
+              <TerminalPane config={singleConfig} isActive chrome="none"
+                searchVisible={searchTerminalId === singleConfig.id} onSearchClose={() => setSearchTerminalId(null)} />
+            )}
+          </div>
+        )}
+      </main>
 
       {modal === 'new-workspace' && <NewWorkspaceDialog onClose={() => setModal('none')} />}
       {modal === 'rename-workspace' && workspace && (
@@ -687,7 +577,12 @@ export function App(): React.JSX.Element {
         <RenameTerminalDialog terminal={activeConfig} onClose={() => setModal('none')} />
       )}
       {modal === 'new-terminal' && workspace && (
-        <NewTerminalDialog workspace={workspace} onClose={() => setModal('none')} />
+        <NewTerminalDialog workspace={workspace} onClose={() => setModal('none')}
+          onCreated={(id, direction, anchor) => {
+            if (direction && anchor && useStore.getState().activeWorkspaceId === workspace.id) {
+              setSplit({ workspaceId: workspace.id, ids: [anchor, id], direction, ratio: 0.5 })
+            }
+          }} />
       )}
       {modal === 'settings' && <SettingsDialog onClose={() => setModal('none')} />}
       {modal === 'about' && (
@@ -701,16 +596,16 @@ export function App(): React.JSX.Element {
         <ChangesDialog workspace={workspace} onClose={() => setModal('none')} />
       )}
       {modal === 'palette' && <CommandPalette commands={commands} onClose={() => setModal('none')} />}
-      {modal === 'delete-workspace' && workspace && (
+      {modal === 'delete-workspace' && deleteTarget && (
         <ConfirmDialog
-          title="Delete workspace?"
-          body={`"${workspace.name}" will be removed from Elena along with its session configuration. Files under ${workspace.projectRoot} are not touched.`}
-          confirmLabel="Delete workspace"
+          title="Delete saved project?"
+          body={`"${deleteTarget.name}" will be removed from Saved projects along with its session configuration. Running sessions will stop. Files under ${deleteTarget.projectRoot} are not touched.`}
+          confirmLabel="Delete saved project"
           tone="danger"
           onCancel={() => setModal('none')}
           onConfirm={() => {
             setModal('none')
-            void deleteWorkspace(workspace.id)
+            void deleteWorkspace(deleteTarget.id)
           }}
         />
       )}

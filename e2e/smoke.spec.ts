@@ -9,10 +9,11 @@ import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { _electron as electron, expect, test } from '@playwright/test'
+import { expect, test } from '@playwright/test'
 import type { ConsoleMessage, ElectronApplication, Page } from '@playwright/test'
 import { version as reactVersion } from 'react'
 import { seedE2eSettings } from './settings'
+import { action, configureSession, launchTestApp, openActions, renameSession } from './browser-helpers'
 
 let app: ElectronApplication
 let page: Page
@@ -25,16 +26,7 @@ let userData: string
 test.describe.configure({ mode: 'serial' })
 
 function launchApp(): Promise<ElectronApplication> {
-  const executablePath = process.env.ELENA_E2E_EXECUTABLE
-  return electron.launch(
-    executablePath
-      ? { executablePath, args: [`--user-data-dir=${userData}`], env: { ...process.env, ELENA_E2E: '1' } }
-      : {
-          args: ['.', `--user-data-dir=${userData}`],
-          cwd: process.cwd(),
-          env: { ...process.env, ELENA_E2E: '1' }
-        }
-  )
+  return launchTestApp(userData)
 }
 
 test.beforeAll(async () => {
@@ -63,51 +55,39 @@ test.afterAll(async () => {
 })
 
 test('creates a workspace bound to an existing folder', async () => {
-  await expect(page.getByText('No workspace yet')).toBeVisible()
+  await expect(page.getByText('No projects yet')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Create Workspace' }).click()
+  await page.getByRole('button', { name: 'New project', exact: true }).click()
   await page.getByLabel('Name').fill('E2E Project')
   await page.getByLabel('Project root').fill(projectRoot)
-  await page.getByRole('button', { name: 'Create workspace', exact: true }).click()
+  await page.getByRole('button', { name: 'Create project', exact: true }).click()
 
-  await expect(page.getByText('No terminals in this workspace yet')).toBeVisible()
+  await expect(page.getByText('No sessions in this project yet')).toBeVisible()
 })
 
 test('renames the workspace', async () => {
-  await page.getByRole('button', { name: 'Rename workspace' }).click()
-  await page.getByLabel('Workspace name').fill('E2E Project Renamed')
+  await action(page, 'Rename project')
+  await page.getByLabel('Project name').fill('E2E Project Renamed')
   await page.getByRole('button', { name: 'Save name' }).click()
-
-  await expect(page.locator('.commandbar__title')).toHaveText('E2E Project Renamed')
-  // Every workspace is listed; the renamed one is the selected row.
-  await expect(page.locator('.workspace-item--active .workspace-item__name')).toHaveText('E2E Project Renamed')
+  await expect(page.locator('.project-group__name')).toHaveText('E2E Project Renamed')
 })
 
-test('hides, restores and resizes the sidebar', async () => {
-  const sidebar = page.locator('.sidebar')
-  const widthBefore = (await sidebar.boundingBox())!.width
-
+test('opens saved projects with the keyboard and closes the popup', async () => {
   await page.keyboard.press('Control+KeyB')
-  await expect(sidebar).toHaveCount(0)
-  await page.getByRole('button', { name: 'Show sidebar' }).click()
-  await expect(sidebar).toBeVisible()
-
-  const resizer = page.getByRole('separator', { name: 'Resize sidebar' })
-  await resizer.focus()
-  await page.keyboard.press('Shift+ArrowRight')
-  await expect.poll(async () => (await sidebar.boundingBox())!.width).toBeGreaterThan(widthBefore)
-
-  await resizer.dblclick()
-  await expect.poll(async () => (await sidebar.boundingBox())!.width).toBe(widthBefore)
+  await expect(page.getByLabel('Search saved projects')).toBeFocused()
+  await expect(page.getByRole('button', { name: 'Open project E2E Project Renamed' })).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: 'Saved projects' })).toHaveCount(0)
+  await expect(page.locator('.sidebar')).toHaveCount(0)
 })
 
 test('opens a shell and runs a command in a real PTY', async () => {
-  await page.getByRole('button', { name: 'New Terminal' }).first().click()
+  await configureSession(page)
   await page.getByRole('button', { name: 'Open terminal' }).click()
 
   const pane = page.locator('.pane').first()
   await expect(pane).toBeVisible()
-  await expect(pane.getByText(/Running/)).toBeVisible()
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText('Running')
 
   await pane.locator('.xterm-screen').click()
   await page.keyboard.type('echo E2E_MARKER_OK')
@@ -118,7 +98,8 @@ test('opens a shell and runs a command in a real PTY', async () => {
 
 test('views changed files without disturbing the running terminal', async () => {
   const pane = page.locator('.pane').first()
-  await expect(pane.getByText(/Running/)).toBeVisible()
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText('Running')
+  await openActions(page)
   const changesButton = page.getByRole('button', { name: 'View changed files' })
   await expect(changesButton.locator('.changes-trigger__added')).toHaveText('+3')
   await expect(changesButton.locator('.changes-trigger__deleted')).toHaveText('−1')
@@ -191,13 +172,15 @@ test('views changed files without disturbing the running terminal', async () => 
 
   await dialog.getByRole('button', { name: 'Close changed files' }).click()
   await expect(dialog).toHaveCount(0)
+  await openActions(page)
   await expect(changesButton.locator('.changes-trigger__added')).toHaveText('+7')
   await expect(changesButton.locator('.changes-trigger__deleted')).toHaveText('−2')
   writeFileSync(join(projectRoot, 'UNTRACKED.txt'), 'untracked in e2e\nanother line\n')
   await page.evaluate(() => window.dispatchEvent(new Event('focus')))
   await expect(changesButton.locator('.changes-trigger__added')).toHaveText('+8')
   await page.screenshot({ path: test.info().outputPath('changes-counts.png') })
-  await expect(pane.getByText(/Running/)).toBeVisible()
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText('Running')
+  await page.keyboard.press('Escape')
   await expect(pane.locator('.xterm-rows')).toContainText('E2E_MARKER_OK')
 })
 
@@ -213,18 +196,14 @@ test('shows runtime About information without changing the workspace or sessions
   await expect(page.locator('#root')).not.toBeEmpty()
   await expect(page.locator('vite-error-overlay')).toHaveCount(0)
 
-  const workspaceTitle = await page.locator('.commandbar__title').textContent()
+  const workspaceTitle = await page.locator('.project-group__name').first().textContent()
   const paneCount = await page.locator('.pane').count()
   const versions = await app.evaluate(({ app: electronApp }) => ({
     appVersion: electronApp.getVersion(),
     electronVersion: process.versions.electron
   }))
 
-  const aboutButton = page.getByRole('button', { name: 'About Elena' })
-  await expect(aboutButton).toHaveClass(/icon-button/)
-  await expect(aboutButton).toHaveText('')
-  await expect(aboutButton.locator('svg')).toHaveCount(1)
-  await aboutButton.click()
+  await action(page, 'About Elena')
   const dialog = page.getByRole('dialog', { name: 'About Elena' })
   await expect(dialog).toBeVisible()
   await expect(dialog.getByRole('img', { name: 'Elena logo' })).toBeVisible()
@@ -233,6 +212,7 @@ test('shows runtime About information without changing the workspace or sessions
   await expect(dialog.getByText(versions.electronVersion, { exact: true })).toBeVisible()
   await expect(dialog.getByText(reactVersion, { exact: true })).toBeVisible()
   await expect(dialog.getByRole('heading', { name: 'Updates' })).toBeVisible()
+  // ELENA_E2E suppresses update checks in both dev and packaged runs.
   await expect(dialog.getByText('Automatic updates are available in installed Windows builds.')).toBeVisible()
   await expect(dialog.getByRole('button', { name: 'Check for updates' })).toBeDisabled()
 
@@ -241,11 +221,11 @@ test('shows runtime About information without changing the workspace or sessions
 
   await dialog.getByRole('button', { name: 'Close' }).click()
   await expect(dialog).toHaveCount(0)
-  await expect(page.locator('.commandbar__title')).toHaveText(workspaceTitle ?? '')
+  await expect(page.locator('.project-group__name').first()).toHaveText(workspaceTitle ?? '')
   await expect(page.locator('.pane')).toHaveCount(paneCount)
-  await expect(page.locator('.pane').first().getByText(/Running/)).toBeVisible()
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText('Running')
 
-  await page.getByRole('button', { name: 'About Elena' }).click()
+  await action(page, 'About Elena')
   await page.locator('.dialog-backdrop').click({ position: { x: 5, y: 5 } })
   await expect(page.getByRole('dialog', { name: 'About Elena' })).toHaveCount(0)
   await expect(page.locator('.pane')).toHaveCount(paneCount)
@@ -282,10 +262,15 @@ test('zooms the window with Ctrl++ and Ctrl+-', async () => {
 })
 
 test('copies a terminal selection and pastes clipboard text with Ctrl+C and Ctrl+V', async () => {
+  const clipboardAvailable = await app.evaluate(({ clipboard }) => {
+    clipboard.writeText('ELENA_E2E_CLIPBOARD_CHECK')
+    return clipboard.readText() === 'ELENA_E2E_CLIPBOARD_CHECK'
+  })
+  test.skip(!clipboardAvailable, 'Native Windows clipboard cannot round-trip in this desktop session')
   const pane = page.locator('.pane').first()
 
-  await pane.getByRole('button', { name: 'More session actions' }).click()
-  await pane.getByRole('menuitem', { name: 'Select all' }).click()
+  await action(page, 'Select all')
+  await expect(pane.locator('.xterm-selection div')).not.toHaveCount(0)
   await pane.locator('.xterm-helper-textarea').focus()
   await page.keyboard.press('Control+KeyC')
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain('E2E_MARKER_OK')
@@ -298,6 +283,11 @@ test('copies a terminal selection and pastes clipboard text with Ctrl+C and Ctrl
   await expect(pane.locator('.xterm-rows')).toContainText('E2E_PASTE_RESULT', { timeout: 30_000 })
 
   await expect(pane.locator('.xterm-selection div')).toHaveCount(0)
+})
+
+test('Ctrl+C without a selection interrupts the process instead of copying', async () => {
+  const pane = page.locator('.pane').first()
+  await pane.locator('.xterm-helper-textarea').focus()
   const terminalRows = pane.locator('.xterm-rows')
   // The sleep outlives this test, so the command below can only ever run if
   // Ctrl+C without a selection reached the PTY as an interrupt.
@@ -334,66 +324,60 @@ test('copies a terminal selection and pastes clipboard text with Ctrl+C and Ctrl
   await expect(terminalRows).toContainText('E2E_INTERRUPT_OK', { timeout: 30_000 })
 })
 
-test('splits into a second pane with independent sessions', async () => {
-  await page.getByRole('button', { name: 'New Terminal' }).first().click()
-  await page.getByRole('button', { name: 'Split right' }).click()
+test('splits into a second pane without replacing the saved layout', async () => {
+  await configureSession(page)
   await page.getByRole('button', { name: 'Open terminal' }).click()
-
+  await renameSession(page, 'Worker 2')
+  const before = await page.evaluate(async () => {
+    const result = await window.elena.invoke('workspace:list', undefined)
+    if (!result.ok) throw new Error(result.error.message)
+    return result.data[0]?.layout
+  })
+  await page.getByRole('button', { name: 'Split terminal' }).click()
+  await page.getByRole('dialog', { name: 'Split terminal' }).locator('.chrome-popover__list button').first().click()
   await expect(page.locator('.pane')).toHaveCount(2)
   await expect(page.locator('.split__divider')).toHaveCount(1)
-  await expect(page.locator('.workspace-item--active .workspace-item__meta')).toHaveText('2 sessions')
+  const after = await page.evaluate(async () => {
+    const result = await window.elena.invoke('workspace:list', undefined)
+    if (!result.ok) throw new Error(result.error.message)
+    return result.data[0]?.layout
+  })
+  expect(after).toEqual(before)
+  await page.getByRole('button', { name: 'Return to single terminal' }).click()
+  await expect(page.locator('.pane')).toHaveCount(1)
 })
 
-test('fills the remaining spatial grid slots', async () => {
-  await page.getByRole('button', { name: 'New Terminal' }).first().click()
-  await page.getByRole('button', { name: 'Open terminal' }).click()
-  await page.getByRole('button', { name: 'New Terminal' }).first().click()
-  await page.getByRole('button', { name: 'Open terminal' }).click()
-
-  await expect(page.getByRole('tablist', { name: 'Terminal tabs' })).toHaveCount(0)
-  await expect(page.locator('.pane')).toHaveCount(4)
-  await expect(page.locator('.split__divider')).toHaveCount(3)
-  await expect(page.getByRole('tab', { name: '1–4' })).toHaveAttribute('aria-selected', 'true')
-  // xterm exposes only the rendered viewport through the DOM. Use the newest
-  // marker so a smaller CI viewport does not mistake valid scrollback for loss.
-  await expect(page.locator('.pane').first().locator('.xterm-rows')).toContainText('E2E_INTERRUPT_OK')
-
-  // Selecting a session changes focus without hiding the rest of the workspace.
-  await page.locator('.session-item').nth(3).click()
-  await expect(page.locator('.session-item').nth(3)).toHaveClass(/session-item--active/)
-  await expect(page.locator('.pane')).toHaveCount(4)
-  await page.locator('.session-item').first().click()
-  await expect(page.locator('.session-item').first()).toHaveClass(/session-item--active/)
-  await expect(page.locator('.pane')).toHaveCount(4)
+test('keeps sessions in browser tabs and preserves output when switching', async () => {
+  for (let i = 0; i < 2; i += 1) {
+    await configureSession(page)
+    await page.getByRole('button', { name: 'Open terminal' }).click()
+  }
+  await expect(page.locator('.browser-tab')).toHaveCount(4)
+  await expect(page.locator('.pane')).toHaveCount(1)
+  await page.locator('.browser-tab [role="tab"]').first().click()
+  await expect(page.locator('.pane .xterm-rows')).toContainText('E2E_INTERRUPT_OK')
+  await page.locator('.browser-tab [role="tab"]').nth(3).click()
+  await expect(page.locator('.browser-tab').nth(3)).toHaveClass(/browser-tab--active/)
+  await expect(page.locator('.pane')).toHaveCount(1)
 })
 
 test('renames a terminal without disturbing its session', async () => {
-  // Rename the second configured session. A later test closes the first one,
-  // then the relaunch test verifies this custom name came back from disk.
-  await page.locator('.session-item').nth(1).click()
-  const pane = page.locator('.pane--active')
-  const before = await pane.locator('.badge').first().innerText()
-
-  await page.keyboard.press('F2')
-  await page.getByLabel('Terminal name').fill('Build Watcher')
-  await page.getByRole('button', { name: 'Save name' }).click()
-
-  await expect(pane.locator('.pane__title')).toHaveText('Build Watcher')
-  await expect(page.locator('.session-item__title').nth(1)).toHaveText('Build Watcher')
-  // A rename is a label change only: the pid is untouched.
-  await expect(pane.locator('.badge').first()).toHaveText(before)
-
-  // F2 targets the focused terminal and reaches the same dialog.
+  await page.locator('.browser-tab [role="tab"]').nth(1).click()
+  const before = await page.locator('.browser-toolbar .badge').innerText()
+  await renameSession(page, 'Build Watcher')
+  await expect(page.locator('.browser-tab__title').nth(1)).toHaveText('Build Watcher')
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText(before)
   await page.keyboard.press('F2')
   await expect(page.getByLabel('Terminal name')).toHaveValue('Build Watcher')
   await page.getByRole('button', { name: 'Cancel' }).click()
 })
 
 test('switches theme without disturbing the running session', async () => {
+  await page.locator('.browser-tab [role="tab"]').first().click()
   const paneBuffer = page.locator('.pane').first().locator('.xterm-rows')
   await expect(paneBuffer).toContainText('E2E_INTERRUPT_OK')
 
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.keyboard.press('Control+,')
   await page.getByRole('button', { name: 'Light', exact: true }).click()
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light')
 
@@ -431,7 +415,8 @@ test('switches theme without disturbing the running session', async () => {
 
   // The buffer and the session survived both switches (FR-25).
   await expect(paneBuffer).toContainText('E2E_INTERRUPT_OK')
-  await expect(page.locator('.session-item__meta').filter({ hasText: 'Running' })).toHaveCount(4)
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText('Running')
+  await expect(page.locator('.browser-tab')).toHaveCount(4)
 
   const screenshotPath = process.env.ELENA_E2E_SCREENSHOT
   if (screenshotPath) {
@@ -442,16 +427,14 @@ test('switches theme without disturbing the running session', async () => {
 
 test('selects all and clears terminal output', async () => {
   const pane = page.locator('.pane').first()
-  await pane.getByRole('button', { name: 'More session actions' }).click()
-  await pane.getByRole('menuitem', { name: 'Select all' }).click()
+  await action(page, 'Select all')
   await expect(pane.locator('.xterm-selection div')).not.toHaveCount(0)
-  await pane.getByRole('button', { name: 'More session actions' }).click()
-  await pane.getByRole('menuitem', { name: 'Clear' }).click()
+  await action(page, 'Clear terminal')
   await expect(pane.locator('.xterm-rows')).not.toContainText('E2E_INTERRUPT_OK')
 })
 
 test('creates, edits, launches, duplicates, and deletes a custom preset', async () => {
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.keyboard.press('Control+,')
   await page.getByRole('button', { name: 'New preset', exact: true }).click()
   const editor = page.getByLabel('Preset editor')
   await editor.getByLabel('Name', { exact: true }).fill('E2E Agent')
@@ -474,25 +457,23 @@ test('creates, edits, launches, duplicates, and deletes a custom preset', async 
   await expect(page.getByText('E2E Agent Updated Copy', { exact: true })).toHaveCount(0)
   await page.getByRole('button', { name: 'Done' }).click()
 
-  await page.getByRole('button', { name: 'New Terminal' }).first().click()
+  await configureSession(page)
   await page.getByLabel('Shell or agent').selectOption({ label: 'E2E Agent Updated' })
   await expect(page.getByLabel('Working directory')).toHaveValue('preset-cwd')
   await page.getByRole('button', { name: 'Open terminal' }).click()
 
-  const presetPane = page.locator('.pane--active')
-  await expect(presetPane.locator('.pane__cwd')).toContainText('cwd: preset-cwd')
-  await presetPane.getByRole('button', { name: 'More session actions' }).click()
-  await presetPane.getByRole('menuitem', { name: 'Close' }).click()
+  await expect(page.locator('.browser-toolbar__path')).toContainText('preset-cwd')
+  await action(page, 'Close session')
   await page.getByRole('button', { name: 'Terminate and close' }).click()
-  await expect(page.locator('.pane')).toHaveCount(4)
+  await expect(page.locator('.browser-tab')).toHaveCount(4)
 
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.keyboard.press('Control+,')
   await page.getByRole('button', { name: 'Delete E2E Agent Updated' }).click()
   await page.getByRole('button', { name: 'Done' }).click()
 })
 
 test('restarting a session produces a new pid', async () => {
-  await page.locator('.session-item').first().click()
+  await page.locator('.browser-tab [role="tab"]').first().click()
   const pane = page.locator('.pane').first()
 
   await pane.locator('.xterm-screen').click()
@@ -503,8 +484,8 @@ test('restarting a session produces a new pid', async () => {
   const before = [...beforeText.matchAll(/E2E_PID_(\d+)/g)].at(-1)?.[1]
   expect(before).toBeTruthy()
 
-  await pane.getByRole('button', { name: 'Restart' }).click()
-  await expect(pane.locator('.badge').first()).toContainText('Running', { timeout: 30_000 })
+  await action(page, 'Restart session')
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText('Running', { timeout: 30_000 })
   await pane.locator('.xterm-screen').click()
   await page.keyboard.type('echo E2E_PID_$PID')
   await page.keyboard.press('Enter')
@@ -517,7 +498,7 @@ test('restarting a session produces a new pid', async () => {
 
 test('closing a running session asks for confirmation', async () => {
   const pane = page.locator('.pane').first()
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.keyboard.press('Control+,')
   await expect(page.getByLabel('Confirm before closing a running session')).toBeChecked()
   await page.getByRole('button', { name: 'Done' }).click()
 
@@ -525,22 +506,21 @@ test('closing a running session asks for confirmation', async () => {
   await page.keyboard.press('Control+KeyW')
   await expect(page.getByRole('alertdialog')).toContainText('is still running')
   await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel' }).click()
-  await expect(page.locator('.pane')).toHaveCount(4)
+  await expect(page.locator('.browser-tab')).toHaveCount(4)
 
   await page.keyboard.press('Control+KeyK')
   await page.getByLabel('Search commands').fill('Close focused terminal')
   await page.keyboard.press('Enter')
   await expect(page.getByRole('alertdialog')).toContainText('is still running')
   await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel' }).click()
-  await expect(page.locator('.pane')).toHaveCount(4)
+  await expect(page.locator('.browser-tab')).toHaveCount(4)
 
-  await pane.getByRole('button', { name: 'More session actions' }).click()
-  await pane.getByRole('menuitem', { name: 'Close' }).click()
+  await action(page, 'Close session')
 
   await expect(page.getByRole('alertdialog')).toContainText('is still running')
   await page.getByRole('button', { name: 'Terminate and close' }).click()
 
-  await expect(page.locator('.pane')).toHaveCount(3)
+  await expect(page.locator('.browser-tab')).toHaveCount(3)
 })
 
 test('the command palette opens with Ctrl+K and runs a command', async () => {
@@ -553,21 +533,14 @@ test('the command palette opens with Ctrl+K and runs a command', async () => {
 
 test('layout and configuration are restored on relaunch, processes are not', async () => {
   await app.close()
-
   app = await launchApp()
   page = await app.firstWindow()
   await page.waitForLoadState('domcontentloaded')
-
-  await expect(page.locator('.commandbar__title')).toHaveText('E2E Project Renamed')
-  await expect(page.locator('.pane')).toHaveCount(3)
-  await expect(page.getByRole('tablist', { name: 'Terminal tabs' })).toHaveCount(0)
-  await expect(page.getByRole('tab', { name: '1–3' })).toHaveAttribute('aria-selected', 'true')
-  // Restore returns configuration only. A new process starts only after an
-  // explicit user action (FR-14).
-  const restoredPane = page.locator('.pane').filter({ has: page.getByText('Build Watcher', { exact: true }) })
-  // The custom terminal name is part of the persisted workspace, not the process.
-  await expect(restoredPane.locator('.pane__title')).toHaveText('Build Watcher')
-  await expect(restoredPane.locator('.badge').first()).toContainText('Not started')
-  await restoredPane.getByRole('button', { name: 'Start' }).click()
-  await expect(restoredPane.locator('.badge').first()).toContainText('Running')
+  await expect(page.locator('.project-group__name')).toHaveText('E2E Project Renamed')
+  await expect(page.locator('.browser-tab')).toHaveCount(3)
+  await expect(page.locator('.pane')).toHaveCount(1)
+  await expect(page.locator('.browser-tab__title').first()).toHaveText('Build Watcher')
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText('Not started')
+  await page.locator('.pane').getByRole('button', { name: 'Start', exact: true }).click()
+  await expect(page.locator('.browser-toolbar .badge')).toHaveText('Running')
 })

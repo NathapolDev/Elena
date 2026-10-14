@@ -1,106 +1,60 @@
-# Spatial Agent Grid — Design QA
+# Elena Browser Workspace — Design QA
 
-## Comparison target
+Verified 2026-10-15 (Asia/Bangkok). This replaces the Spatial Agent Grid reference after the user selected browser-style session tabs and Saved projects.
 
-- Source visual truth: `C:\Users\User\.codex\generated_images\019f9f25-c74d-7242-a23a-6f6a918fcc26\exec-34b68e75-9a86-499f-b324-403b422c0f17.png`
-- Implementation screenshot: `spatial-grid-qa.png`
-- Viewport: 1488 × 1058 CSS px
-- Source pixels: 1488 × 1058
-- Implementation pixels: 1488 × 1058
-- Density normalization: 1:1 comparison; the Electron viewport and output screenshot have matching pixel dimensions.
-- State: dark theme, one active project workspace, four running PowerShell sessions in a 2×2 spatial grid, second session focused, inspector expanded.
+## Evidence and environment
 
-## Findings
+- Source: `docs/images/browser-tabs-reference.png` — the approved ImageGen preview, 1536 × 1024 px.
+- Main implementation: `docs/images/browser-workspace-dark.png` — 1536 × 982 px, CSS-sized capture.
+- Other states: `docs/images/browser-workspace-light.png` and `docs/images/browser-workspace-saved-projects.png` — 1180 × 720 px.
+- Combined full comparison: `test-results/browser-qa/comparison-full.png`; focused chrome comparison: `test-results/browser-qa/comparison-chrome.png`.
+- Normalization: removed the source's 43 px native title bar. Its client area is 1536 × 981 px; the implementation is 1536 × 982 px because of Windows DPI rounding. Neither image was stretched. The comparison canvas pads the source by one pixel at the bottom.
+- Captures also cover 1488 × 1059 CSS px (requested 1488 × 1058, rounded by Windows), both themes, and Saved projects. Native minimum size 1180 × 720 was checked.
+- State: Elena expanded with Claude/Codex/Shell tabs, Codex selected, API Service and Docs collapsed. A real PowerShell PTY prints a fixture transcript; the screenshot does not claim a live Codex agent. Only the selected fixture session is running.
+- Tooling: the project's Playwright Electron runner, with disposable profiles. The Browser plugin is not available, and a browser tab cannot exercise this native app's preload/PTY contract. Capture command: `node scripts/capture-browser-workspace.mjs`.
 
-- Two P1 mismatches are open (Iteration 3): the right-side session inspector and the persistent bottom
-  session action bar are no longer mounted, though the reference still shows both.
-- The implementation preserves the rest of the source composition: project command bar, workspace/session
-  navigator, four persistent panes, and grid pagination.
-- The E2E fixture uses real PowerShell prompts and a temporary project path rather than the illustrative Codex/Claude transcript in the source. This is expected functional data, not design drift.
+## Visual comparison
 
-## Required fidelity surfaces
+The source and final capture were compared together, including a separate crop of the tab strip and toolbar. Both show one grouped session-tab row, a compact context toolbar, and one full-width terminal. Sidebar, grid chrome, inspector, and permanent bottom actions are absent as requested.
 
-- Fonts and typography: UI hierarchy, compact labels, pane metadata, monospace terminal content, weights, wrapping, and truncation align with the source's dense desktop treatment. Long real test paths truncate safely without pushing persistent controls off-screen.
-- Spacing and layout rhythm: the sidebar, balanced 2×2 grid, inspector, command bar, and action bar preserve the source hierarchy and proportions. Pane headers and dividers remain legible at the target viewport.
-- Colors and visual tokens: dark navy surfaces, cool borders, blue primary controls, cyan active-pane focus, green running states, and red destructive actions map consistently to the source.
-- Image quality and asset fidelity: the reference contains no raster imagery, logos, or decorative assets requiring generation. Interface icons use Phosphor React components; no placeholder image assets are present.
-- Copy and content: workspace/session terminology is consistent with the existing product. “New session,” “Layout: 2×2,” “Session inspector,” grid ranges, and session actions match the reference intent.
+- **Typography:** retained the bundled UI and terminal fonts. UI uses Elena's existing compact 13 px scale; the capture fixture uses the adjustable 16 px terminal setting. The generated mock is larger. This deliberate density choice preserves readability at minimum size and gives terminal content more room.
+- **Spacing:** tabs are 46 px and toolbar 40 px. Tab titles truncate; the whole selected tab, including Close, scrolls into view. New session, bookmarks, and All tabs remain reachable when the strip overflows.
+- **Colors:** existing One Half Dark tokens, restrained teal/purple/neutral group labels, neutral selected-tab surface, and semantic status colors. Equivalent group tokens are declared for Light. No component color literals were added.
+- **Assets:** native Elena branding and existing Phosphor icons are reused. The approved mock contains no additional raster artwork needed by the interface.
+- **Copy:** Project terminology is used in create/rename/bookmark flows. Branch names, running counts, prompts, and transcript content are runtime data; the fixture's Redesign branch differs from the mock's main branch. Saved projects is the user-approved addition after the mock.
 
-## Full-view comparison evidence
+No actionable P0/P1/P2 visual findings remain. Larger typography matching the generated mock can be considered as optional P3 polish; terminal typography remains user-adjustable.
 
-The source and implementation were opened together at identical 1488 × 1058 dimensions after the final Electron build. The major regions, dark visual hierarchy, four-pane density, active-session treatment, inspector information, and persistent actions are visibly equivalent. Real terminal output is intentionally sparse in the fixture but does not change the layout.
+## Fix history
 
-## Focused region comparison evidence
+1. **P1 — oversized toolbar:** the original app grid rule overrode the new three-row shell. Increasing the browser-shell selector specificity restored the intended layout. Final captures measure 46/40 px chrome and no pane header in single view.
+2. **P2 — Close clipped on overflowing tabs:** scrolling the tab button omitted its sibling Close control. Scroll targeting now includes the whole tab; the New session button sits outside the scroll region. The overflow journey checks both bounds and reachability.
+3. **P1 — divider missed pointer input:** terminal content covered the divider hit area. The divider now has its own stacking level. Real hit testing and mouse dragging pass; ratio updates are paced to one animation frame and do not replace the saved layout.
 
-Separate crops were not required because both original-resolution images make the critical small regions readable. Pane headers were checked for title/status/cwd/elapsed/action spacing; the inspector was checked for title, status, preset, PID, cwd, elapsed, exit code, and lifecycle actions; the footer was checked for Focus, Split, Stop, Restart, Close, and More actions.
+Post-fix evidence is the combined final comparison and the completed Electron journeys. Earlier grid screenshots are superseded by this approved design.
 
-## Comparison history
+## Validation
 
-### Iteration 1 — blocked
+| Check | Result |
+| --- | --- |
+| Page identity, populated app, no framework overlay | Passed |
+| Capture console warnings/errors | None |
+| Lint and TypeScript | Passed |
+| Unit/contract tests | 327 passed; one existing symlink case skipped because Windows lacks the privilege |
+| Electron E2E | 36 passed, including copy/paste, real split dragging, background output, bookmarks, overflow, relaunch, font/theme continuity, detached-window writes, and orphan cleanup |
+| Windows build | NSIS installer, blockmap, and latest.yml produced and artifact-verified |
+| Performance | 2 suites passed; 10 PTYs, event-loop p99 16.3 ms, max 16.7 ms, largest send 6 KB |
 
-- [P2] Pane headers repeated PID inside the status badge, creating truncation and duplicating the dedicated Inspector PID field.
-- [P2] The bottom bar only displayed passive workspace text and did not reproduce the source's persistent session action strip.
+Baseline PTY p99 was 16.6 ms. These are main-process throughput measurements, not a renderer frame-rate claim. Noisy-session output stays bounded; unread state changes only once until acknowledged. Split resizing sends no workspace layout updates.
 
-Fixes made:
+An earlier desktop session could not round-trip even the native Windows clipboard; the E2E preflight isolates that environment limitation. The final run supported clipboard access and passed the copy/paste test. An isolated rerun also passed the full unit suite after a transient worker exit during concurrent packaging.
 
-- Reduced pane/sidebar status badges to semantic state text while keeping PID in the Inspector.
-- Added functional Focus, Split, Stop, Restart, Close, and More actions to the bottom bar, including confirmation for closing a running session.
-- Rebuilt Electron before recapturing to ensure the rendered bundle matched source state.
+The installer was built, not installed. Packaged-app E2E was not run locally because startup can refresh the user's Explorer registry integration; the shared E2E launcher supports `ELENA_E2E_EXECUTABLE` for that release gate in an isolated environment.
 
-Post-fix evidence: `spatial-grid-qa.png` shows uncluttered pane headers and the complete persistent action bar at the matched viewport.
+## Fence report
 
-### Iteration 2 — passed
+Changed: browser chrome, saved/open project preferences, session navigation and creation, temporary split views, their tests, capture tooling, and this QA evidence. Workspace schema and IPC interfaces remain compatible with existing saved projects.
 
-- Reopened the source and rebuilt implementation together at 1488 × 1058.
-- Confirmed no actionable P0/P1/P2 visual or usability differences remain.
-- Electron smoke flow passed 14/14 scenarios, including workspace persistence, four-pane layout, session switching, theme continuity, restart, close confirmation, command palette, and relaunch.
+Noticed, not changed: native desktop clipboard availability and Windows symlink privileges vary by execution session. No OS policy or renderer security settings were changed to bypass them.
 
-### Iteration 3 — blocked
-
-Triggered by the drag-to-move / detach-to-window work, which changes pane chrome. Recaptured at
-1488 × 1058 in the recorded state (dark theme, one workspace, four running PowerShell sessions, second
-focused) and reopened the source alongside it.
-
-Grid composition itself is unchanged and still matches: `buildSpatialGrid` was not touched, the balanced 2×2
-holds, `1–4` pagination is present, and the active pane keeps its cyan focus treatment. The new chrome —
-a six-dot drag grip at the head of each pane header, the drop-position overlay, the detached-pane
-placeholder — reads as part of the existing token set and introduces no new colour. The grip is the one
-addition the reference does not have; it costs ~15px of header width and is what makes the drag gesture
-discoverable, so it is a deliberate divergence rather than drift.
-
-Two surfaces the record requires can no longer be reproduced, and both predate this change:
-
-- [P1] The **Session Inspector** the reference shows down the right edge (Preset, PID, relative cwd, Elapsed,
-  Exit code, plus Restart/Stop/Close) is not mounted. `src/renderer/src/components/SessionInspector.tsx`
-  still exists but nothing imports it.
-- [P1] The **persistent bottom session action bar** (Focus session, Split, Stop, Restart, Close, More
-  actions) added in Iteration 1 is gone, along with the "All systems operational" status line.
-
-Both disappeared in `580bee6` ("feat: enhance terminal workspace interactions"), so the "Iteration 2 —
-passed" verdict above has been stale since that commit rather than being regressed by this work. Whether to
-restore them or to retire them from the reference is a product decision, not a QA one — recording rather
-than resolving it here.
-
-The remaining three surfaces (typography, spacing rhythm, colour tokens) were compared and show no
-actionable mismatch. Real PowerShell prompts and a temp project path instead of the illustrative transcript
-remain expected fixture data.
-
-## Open questions
-
-- None blocking. Workspace diversity and rich terminal transcripts are runtime data rather than static UI fixtures.
-
-## Implementation checklist
-
-- [x] Preserve workspace-per-project navigation.
-- [x] Auto-place new sessions into 2×2 spatial grid slots.
-- [x] Paginate sessions beyond four without losing the workspace boundary.
-- [x] Keep pane lifecycle controls and the active-session inspector functional.
-- [x] Provide persistent bottom session actions.
-- [x] Verify type safety, lint, unit tests, production build, and Electron E2E flow.
-
-## Follow-up polish
-
-- [P3] Consider adding representative agent transcript fixtures for future visual-regression snapshots so content density can be compared independently from live PTY behavior.
-
-final result: blocked (Iteration 3) — grid composition passes; the inspector and bottom action bar the
-reference requires are absent since `580bee6`.
+final result: passed

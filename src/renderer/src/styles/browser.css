@@ -1,0 +1,150 @@
+.app.app--browser {
+  grid-template-rows: var(--browser-tabs-height) var(--browser-toolbar-height) minmax(0, 1fr);
+}
+.app--browser > .app__main { padding: 0; }
+.browser-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 4px 12px 0;
+  background: var(--surface);
+  border-bottom: 1px solid var(--divider);
+}
+.browser-tabs__scroll {
+  display: flex;
+  align-items: stretch;
+  flex: 0 1 auto;
+  min-width: 0;
+  height: 100%;
+  gap: 12px;
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--divider) transparent;
+}
+.browser-tabs__empty { align-self: center; padding: 0 8px; color: var(--text-secondary); }
+.browser-tabs__spacer { flex: 1; min-width: 0; }
+.project-group {
+  --group-color: var(--project-teal);
+  --group-bg: var(--project-teal-bg);
+  display: flex;
+  align-items: stretch;
+  flex: none;
+  border-bottom: 2px solid var(--group-color);
+  gap: 7px;
+}
+.project-group--1 { --group-color: var(--project-purple); --group-bg: var(--project-purple-bg); }
+.project-group--2 { --group-color: var(--project-neutral); --group-bg: var(--project-neutral-bg); }
+.project-group__label {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  gap: 8px;
+  max-width: 190px;
+  height: 28px;
+  margin-bottom: 3px;
+  padding: 0 11px;
+  background: var(--group-bg);
+  color: var(--text-primary);
+  border-radius: 6px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.project-group__name { overflow: hidden; text-overflow: ellipsis; }
+.project-group__count { opacity: 0.75; font-size: 12px; }
+.project-group__tabs { display: flex; gap: 2px; }
+.browser-tab {
+  display: flex;
+  align-items: center;
+  width: 160px;
+  min-width: 0;
+  padding-right: 6px;
+  border-radius: 7px 7px 0 0;
+  color: var(--text-secondary);
+}
+.browser-tab:hover { background: var(--surface-hover); }
+.browser-tab--active { background: var(--surface-elevated); color: var(--text-primary); }
+.browser-tab > [role='tab'] {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0 10px;
+  text-align: left;
+}
+.browser-tab__title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-tab svg, .project-group svg { flex: none; }
+.browser-tab__close { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 4px; flex: none; }
+.browser-tab__close:hover { background: var(--surface-hover); color: var(--text-primary); }
+.tab-unread { width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--primary); }
+.browser-tabs__add { align-self: center; margin-bottom: 3px; }
+.browser-toolbar {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 12px;
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--divider);
+  color: var(--text-secondary);
+}
+.browser-toolbar__context { display: flex; align-items: center; flex: 1; gap: 12px; min-width: 0; }
+.browser-toolbar__context > svg { flex: none; }
+.browser-toolbar__path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 65%; }
+.browser-toolbar__branch { display: flex; align-items: center; gap: 7px; min-width: 0; max-width: 240px; padding-left: 16px; border-left: 1px solid var(--divider); }
+.browser-toolbar__branch span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toolbar-action { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 8px; border-radius: 4px; }
+.toolbar-action:hover:not(:disabled) { color: var(--text-primary); background: var(--surface-hover); }
+.toolbar-action:disabled { opacity: 0.4; cursor: default; }
+.app--browser .pane { margin: 0; border: none; border-radius: 0; box-shadow: none; background: var(--term-bg); }
+.app--browser .pane--active { box-shadow: none; }
+.app--browser .pane__terminal { padding: 20px 24px; }
+.app--browser .pane--minimal .pane__header { min-height: 30px; padding: 0 12px; background: var(--surface); }
+.app--browser .pane--minimal .pane__header,
+.app--browser .pane--minimal .pane__header:active { cursor: default; }
+.app--browser .pane--minimal .pane__header .badge,
+.app--browser .pane--minimal .pane__metadata,
+.app--browser .pane--minimal .pane__actions { display: none; }
+.app--browser .pane--minimal.pane--active .pane__header { color: var(--active-terminal); }
+.app--browser .pane--minimal .pane__terminal { padding: 16px; }
+.app--browser .split__divider { z-index: 1; }
+.chrome-overlay { position: fixed; inset: 0; z-index: 90; }
+.chrome-popover {
+  position: absolute;
+  top: calc(var(--browser-tabs-height) + var(--browser-toolbar-height) + 4px);
+  right: 14px;
+  display: flex;
+  flex-direction: column;
+  width: 310px;
+  max-height: calc(100vh - 108px);
+  padding: 8px;
+  border: 1px solid var(--divider);
+  border-radius: 8px;
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-pane);
+}
+.chrome-popover--wide { width: min(450px, calc(100vw - 28px)); }
+.chrome-popover__heading { padding: 8px 9px 12px; font-weight: 600; }
+.chrome-popover__search { width: 100%; margin-bottom: 8px; }
+.chrome-popover__list { overflow-y: auto; min-height: 0; }
+.chrome-popover button:not(.icon-button):not(.segmented__option) { display: flex; align-items: center; width: 100%; gap: 9px; min-height: 34px; padding: 7px 9px; text-align: left; border: none; border-radius: 4px; background: transparent; }
+.chrome-popover button:hover:not(:disabled) { background: var(--surface-hover); }
+.chrome-popover button:disabled { opacity: 0.4; cursor: default; }
+.chrome-popover button small { margin-left: auto; font-size: 11px; color: var(--text-secondary); }
+.chrome-popover__divider { height: 1px; background: var(--divider); margin: 6px 0; flex: none; }
+.chrome-popover__empty { padding: 12px; color: var(--text-secondary); }
+.saved-project { display: flex; align-items: center; }
+.chrome-popover .saved-project__open { flex: 1; min-width: 0; }
+.saved-project__identity { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.saved-project__identity strong, .all-tab strong { font-weight: 500; }
+.chrome-popover .saved-project__identity small { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saved-project__state { color: var(--text-secondary); font-size: 11px; }
+.all-tab > span:first-of-type { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+.chrome-popover .all-tab small { margin: 0; }
+@media (max-width: 1180px) {
+  .browser-tab { width: 140px; }
+  .browser-toolbar { gap: 8px; }
+  .browser-toolbar__branch { max-width: 150px; }
+}

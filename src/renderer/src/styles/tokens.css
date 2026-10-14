@@ -22,6 +22,8 @@
   --inspector-width: 210px;
   --pane-header-height: 44px;
   --statusbar-height: 42px;
+  --browser-tabs-height: 46px;
+  --browser-toolbar-height: 40px;
 
   --font-ui: 'Inter', 'Segoe UI Variable Text', 'Segoe UI', system-ui, sans-serif;
   /* Leads with the face bundled in fonts.css; the rest are installed-only fallbacks. */
@@ -48,6 +50,12 @@
   --primary: #61afef;
   --primary-contrast: #282c34;
   --active-terminal: #56b6c2;
+  --project-teal: #56b6c2;
+  --project-teal-bg: #29474c;
+  --project-purple: #c678dd;
+  --project-purple-bg: #463b57;
+  --project-neutral: #abb2bf;
+  --project-neutral-bg: #3b414c;
   --status-running: #98c379;
   --status-waiting: #e5c07b;
   --status-error: #e06c75;
@@ -98,6 +106,12 @@
   --primary: #1558c4;
   --primary-contrast: #ffffff;
   --active-terminal: #0b5f8a;
+  --project-teal: #0b5f8a;
+  --project-teal-bg: #d7e9ed;
+  --project-purple: #7953a4;
+  --project-purple-bg: #e9e1f1;
+  --project-neutral: #606976;
+  --project-neutral-bg: #e0e4eb;
   --status-running: #12692f;
   --status-waiting: #7d4e00;
   --status-error: #b91626;

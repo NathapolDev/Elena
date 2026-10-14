@@ -2,7 +2,7 @@
  * Renders the layout tree. Dividers are draggable and the resulting ratio is
  * pushed straight to the store; persistence is debounced in the main process.
  */
-import { useCallback, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import type { LayoutNode, TerminalConfig } from '@shared/types'
 import { clampRatio, collectTerminalIds } from '@shared/layout'
 import { TerminalPane } from './TerminalPane'
@@ -13,6 +13,9 @@ type Props = {
   terminals: TerminalConfig[]
   activeTerminalId: string | null
   detachedTerminalIds: string[]
+  chrome?: 'full' | 'minimal'
+  searchTerminalId?: string | null
+  onSearchClose?: () => void
   path?: number[]
   onRatioChange: (path: number[], ratio: number) => void
   onActivateTab: (tabId: string) => void
@@ -24,34 +27,56 @@ export function SplitView({
   activeTerminalId,
   detachedTerminalIds,
   path = [],
+  chrome = 'full',
+  searchTerminalId,
+  onSearchClose,
   onRatioChange,
   onActivateTab
 }: Props): React.JSX.Element | null {
   const containerRef = useRef<HTMLDivElement>(null)
+  const finishDrag = useRef<(() => void) | null>(null)
+  useEffect(() => () => finishDrag.current?.(), [])
 
   const startDrag = useCallback(
     (event: React.PointerEvent<HTMLDivElement>) => {
       if (node.type !== 'split') return
       const container = containerRef.current
       if (!container) return
+      finishDrag.current?.()
       event.preventDefault()
       const target = event.currentTarget
       target.setPointerCapture(event.pointerId)
 
-      const move = (moveEvent: PointerEvent): void => {
+      let frame: number | null = null
+      let point: { x: number; y: number } | null = null
+      const commit = (): void => {
+        frame = null
+        if (!point || !container.isConnected) return
         const rect = container.getBoundingClientRect()
         const ratio =
           node.direction === 'horizontal'
-            ? (moveEvent.clientX - rect.left) / rect.width
-            : (moveEvent.clientY - rect.top) / rect.height
+            ? (point.x - rect.left) / rect.width
+            : (point.y - rect.top) / rect.height
         onRatioChange(path, clampRatio(ratio))
       }
+      // Up to 1000 pointer events/s × one visible split × two panes. Keep
+      // geometry reads and local React updates to one per animation frame.
+      const move = (moveEvent: PointerEvent): void => {
+        point = { x: moveEvent.clientX, y: moveEvent.clientY }
+        frame ??= requestAnimationFrame(commit)
+      }
       const up = (): void => {
+        if (frame !== null) cancelAnimationFrame(frame)
+        commit()
         window.removeEventListener('pointermove', move)
         window.removeEventListener('pointerup', up)
+        window.removeEventListener('pointercancel', up)
+        finishDrag.current = null
       }
+      finishDrag.current = up
       window.addEventListener('pointermove', move)
       window.addEventListener('pointerup', up)
+      window.addEventListener('pointercancel', up)
     },
     [node, onRatioChange, path]
   )
@@ -64,7 +89,8 @@ export function SplitView({
     if (detachedTerminalIds.includes(node.terminalId)) {
       return <DetachedPanePlaceholder config={config} />
     }
-    return <TerminalPane config={config} isActive={activeTerminalId === node.terminalId} />
+    return <TerminalPane config={config} isActive={activeTerminalId === node.terminalId} chrome={chrome}
+      searchVisible={searchTerminalId === undefined ? undefined : searchTerminalId === config.id} onSearchClose={onSearchClose} />
   }
 
   if (node.type === 'tabs') {
@@ -96,6 +122,7 @@ export function SplitView({
         )}
         <div className="tabs__content" role="tabpanel">
           <SplitView
+            chrome={chrome} searchTerminalId={searchTerminalId} onSearchClose={onSearchClose}
             node={active.layout}
             terminals={terminals}
             activeTerminalId={activeTerminalId}
@@ -119,6 +146,7 @@ export function SplitView({
         style={node.direction === 'horizontal' ? { width: first } : { height: first }}
       >
         <SplitView
+          chrome={chrome} searchTerminalId={searchTerminalId} onSearchClose={onSearchClose}
           node={node.children[0]}
           terminals={terminals}
           activeTerminalId={activeTerminalId}
@@ -154,6 +182,7 @@ export function SplitView({
         style={node.direction === 'horizontal' ? { width: second } : { height: second }}
       >
         <SplitView
+          chrome={chrome} searchTerminalId={searchTerminalId} onSearchClose={onSearchClose}
           node={node.children[1]}
           terminals={terminals}
           activeTerminalId={activeTerminalId}

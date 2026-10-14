@@ -29,6 +29,9 @@ import type { TerminalConfig } from '@shared/types'
 type Props = {
   config: TerminalConfig
   isActive: boolean
+  chrome?: 'full' | 'minimal' | 'none'
+  searchVisible?: boolean
+  onSearchClose?: () => void
 }
 
 /**
@@ -52,7 +55,7 @@ const DROP_LABELS: Record<DropPosition, string> = {
  */
 const COMPACT_PANE_WIDTH = 420
 
-export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
+export function TerminalPane({ config, isActive, chrome = 'full', searchVisible, onSearchClose }: Props): React.JSX.Element {
   const hostRef = useRef<HTMLDivElement>(null)
   const paneRef = useRef<HTMLElement>(null)
 
@@ -70,7 +73,8 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
 
   const [pendingPaste, setPendingPaste] = useState<string | null>(null)
   const [renaming, setRenaming] = useState(false)
-  const [searchOpen, setSearchOpen] = useState(false)
+  const [localSearchOpen, setSearchOpen] = useState(false)
+  const searchOpen = searchVisible ?? localSearchOpen
   const [searchTerm, setSearchTerm] = useState('')
   const [moreOpen, setMoreOpen] = useState(false)
   const [dropPosition, setDropPosition] = useState<DropPosition | null>(null)
@@ -263,35 +267,35 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
   return (
     <section
       ref={paneRef}
-      className={`pane ${isActive ? 'pane--active' : ''} ${compact ? 'pane--compact' : ''}`}
+      className={`pane ${isActive ? 'pane--active' : ''} ${compact ? 'pane--compact' : ''} pane--${chrome}`}
       aria-label={`Terminal ${config.title}`}
       onMouseDown={() => focusTerminal(config.id)}
-      onDragOver={onDragOver}
+      onDragOver={chrome === 'full' ? onDragOver : undefined}
       onDragLeave={() => setDropPosition(null)}
-      onDrop={onDrop}
+      onDrop={chrome === 'full' ? onDrop : undefined}
     >
       {/*
         The whole header is the drag handle. Limiting it to the title made the
         gesture almost undiscoverable: the obvious places to grab a pane are its
         header bar and its body, and neither did anything.
       */}
-      <header
+      {chrome !== 'none' && <header
         className="pane__header"
-        draggable
+        draggable={chrome === 'full'}
         onDragStart={(event) => {
           event.dataTransfer.setData(TERMINAL_DRAG_TYPE, config.id)
           event.dataTransfer.effectAllowed = 'move'
         }}
         onDragEnd={() => setDropPosition(null)}
       >
-        <span className="pane__grip" aria-hidden="true" title="Drag to move this pane">
+        {chrome === 'full' && <span className="pane__grip" aria-hidden="true" title="Drag to move this pane">
           <DotsSixVerticalIcon size={15} weight="bold" />
-        </span>
+        </span>}
         <div className="pane__identity">
           <span
             className="pane__title"
             onDoubleClick={() => setRenaming(true)}
-            title={`${config.title} — drag the header to move, double-click to rename`}
+            title={chrome === 'full' ? `${config.title} — drag the header to move, double-click to rename` : `${config.title} — double-click to rename`}
           >
             {config.title}
           </span>
@@ -439,7 +443,7 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
             )}
           </div>
         </div>
-      </header>
+      </header>}
 
       {searchOpen && (
         <div className="pane__notice">
@@ -457,7 +461,7 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
             }}
             onKeyDown={(event) => {
               if (event.key === 'Enter') runSearch(searchTerm, event.shiftKey ? 'previous' : 'next')
-              if (event.key === 'Escape') setSearchOpen(false)
+              if (event.key === 'Escape') { setSearchOpen(false); onSearchClose?.() }
             }}
           />
           <button type="button" className="button" onClick={() => runSearch(searchTerm, 'previous')}>
@@ -474,6 +478,13 @@ export function TerminalPane({ config, isActive }: Props): React.JSX.Element {
       {dropPosition && (
         <div className={`pane__drop pane__drop--${dropPosition}`} aria-hidden="true">
           <span className="pane__drop-label">{DROP_LABELS[dropPosition]}</span>
+        </div>
+      )}
+
+      {!session && chrome !== 'full' && (
+        <div className="pane__notice" role="status">
+          <span>Not started</span>
+          <button type="button" className="button" onClick={handleRestart}>Start</button>
         </div>
       )}
 
