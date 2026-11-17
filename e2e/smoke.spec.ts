@@ -13,7 +13,7 @@ import { expect, test } from '@playwright/test'
 import type { ConsoleMessage, ElectronApplication, Page } from '@playwright/test'
 import { version as reactVersion } from 'react'
 import { seedE2eSettings } from './settings'
-import { action, configureSession, launchTestApp, openActions, renameSession } from './browser-helpers'
+import { action, configureSession, launchTestApp, renameSession } from './browser-helpers'
 
 let app: ElectronApplication
 let page: Page
@@ -99,7 +99,6 @@ test('opens a shell and runs a command in a real PTY', async () => {
 test('views changed files without disturbing the running terminal', async () => {
   const pane = page.locator('.pane').first()
   await expect(page.locator('.browser-toolbar .badge')).toHaveText('Running')
-  await openActions(page)
   const changesButton = page.getByRole('button', { name: 'View changed files' })
   await expect(changesButton.locator('.changes-trigger__added')).toHaveText('+3')
   await expect(changesButton.locator('.changes-trigger__deleted')).toHaveText('−1')
@@ -172,7 +171,6 @@ test('views changed files without disturbing the running terminal', async () => 
 
   await dialog.getByRole('button', { name: 'Close changed files' }).click()
   await expect(dialog).toHaveCount(0)
-  await openActions(page)
   await expect(changesButton.locator('.changes-trigger__added')).toHaveText('+7')
   await expect(changesButton.locator('.changes-trigger__deleted')).toHaveText('−2')
   writeFileSync(join(projectRoot, 'UNTRACKED.txt'), 'untracked in e2e\nanother line\n')
@@ -180,7 +178,6 @@ test('views changed files without disturbing the running terminal', async () => 
   await expect(changesButton.locator('.changes-trigger__added')).toHaveText('+8')
   await page.screenshot({ path: test.info().outputPath('changes-counts.png') })
   await expect(page.locator('.browser-toolbar .badge')).toHaveText('Running')
-  await page.keyboard.press('Escape')
   await expect(pane.locator('.xterm-rows')).toContainText('E2E_MARKER_OK')
 })
 

@@ -95,6 +95,27 @@
 .browser-toolbar__path { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 65%; }
 .browser-toolbar__branch { display: flex; align-items: center; gap: 7px; min-width: 0; max-width: 240px; padding-left: 16px; border-left: 1px solid var(--divider); }
 .browser-toolbar__branch span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-toolbar .changes-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--divider);
+  border-radius: 4px;
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  font-size: 12px;
+  flex: none;
+  cursor: pointer;
+}
+.browser-toolbar .changes-trigger:hover:not(:disabled) {
+  background: var(--surface-hover);
+}
+.browser-toolbar .changes-trigger:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
 .toolbar-action { display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 8px; border-radius: 4px; }
 .toolbar-action:hover:not(:disabled) { color: var(--text-primary); background: var(--surface-hover); }
 .toolbar-action:disabled { opacity: 0.4; cursor: default; }

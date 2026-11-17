@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { BookmarkSimpleIcon } from '@phosphor-icons/react/BookmarkSimple'
 import { CaretDownIcon } from '@phosphor-icons/react/CaretDown'
 import { CaretRightIcon } from '@phosphor-icons/react/CaretRight'
-import { DotsThreeIcon } from '@phosphor-icons/react/DotsThree'
 import { FolderIcon } from '@phosphor-icons/react/Folder'
 import { GitBranchIcon } from '@phosphor-icons/react/GitBranch'
 import { MagnifyingGlassIcon } from '@phosphor-icons/react/MagnifyingGlass'
@@ -19,7 +18,7 @@ import { ChromePopover } from './ChromePopover'
 import { StatusBadge } from './StatusBadge'
 import { ChangesButton } from './ChangesButton'
 
-export type ChromePanel = 'saved' | 'tabs' | 'new' | 'more' | 'split' | 'project' | null
+export type ChromePanel = 'saved' | 'tabs' | 'new' | 'more' | 'split' | 'project' | 'session' | null
 export type SplitSelection = { workspaceId: string; ids: [string, string]; direction: 'horizontal' | 'vertical'; ratio: number }
 
 type Props = {
@@ -63,6 +62,7 @@ export function BrowserChrome({ panel, onPanel, onNewWorkspace, onConfigure, onR
   const query = search.panel === panel ? search.value : ''
   const setQuery = (value: string): void => setSearch({ panel, value })
   const [projectMenuId, setProjectMenuId] = useState<string | null>(null)
+  const [sessionMenuTerminalId, setSessionMenuTerminalId] = useState<string | null>(null)
   const [splitDirection, setSplitDirection] = useState<'horizontal' | 'vertical'>('horizontal')
   const needle = query.trim().toLowerCase()
   const openProjects = useMemo(() => openIds.flatMap((id) => {
@@ -71,10 +71,12 @@ export function BrowserChrome({ panel, onPanel, onNewWorkspace, onConfigure, onR
   }), [openIds, workspaces])
   const projects = workspaces.filter((w) => `${w.name} ${w.projectRoot}`.toLowerCase().includes(needle))
   const projectMenu = workspaces.find((w) => w.id === projectMenuId)
+  const sessionMenuTerminal = workspaces.flatMap((w) => w.terminals).find((t) => t.id === sessionMenuTerminalId) ?? active
   const currentSplit = split?.workspaceId === workspace?.id ? split : null
-  const closePopup = (): void => { onPanel(null); setProjectMenuId(null); setQuery('') }
+  const closePopup = (): void => { onPanel(null); setProjectMenuId(null); setSessionMenuTerminalId(null); setQuery('') }
   const togglePanel = (next: ChromePanel): void => {
     setProjectMenuId(null)
+    setSessionMenuTerminalId(null)
     setQuery('')
     onPanel(panel === next ? null : next)
   }
@@ -117,14 +119,13 @@ export function BrowserChrome({ panel, onPanel, onNewWorkspace, onConfigure, onR
     }
   }
 
-  const start = (): void => {
-    if (!active) return
+  const startSession = (terminalId: string): void => {
     const store = useStore.getState()
-    const entry = acquireTerminal(active.id, { scrollback: store.settings.scrollback, onOutput: () => store.markUnread(active.id) })
-    if (store.sessions[active.id]) {
+    const entry = acquireTerminal(terminalId, { scrollback: store.settings.scrollback, onOutput: () => store.markUnread(terminalId) })
+    if (store.sessions[terminalId]) {
       entry.term.clear()
-      void store.restartTerminal(active.id, entry.term.cols, entry.term.rows)
-    } else void store.startTerminal(active.id, entry.term.cols, entry.term.rows)
+      void store.restartTerminal(terminalId, entry.term.cols, entry.term.rows)
+    } else void store.startTerminal(terminalId, entry.term.cols, entry.term.rows)
     closePopup()
   }
 
@@ -132,6 +133,15 @@ export function BrowserChrome({ panel, onPanel, onNewWorkspace, onConfigure, onR
     useStore.getState().focusTerminal(id)
     closePopup()
     if (keyboard) requestAnimationFrame(() => selectedTab.current?.focus())
+  }
+
+  const openSessionMenu = (event: React.MouseEvent | React.KeyboardEvent, targetProjectId: string, targetTerminalId: string): void => {
+    event.preventDefault()
+    useStore.getState().selectWorkspace(targetProjectId)
+    useStore.getState().focusTerminal(targetTerminalId)
+    setSessionMenuTerminalId(targetTerminalId)
+    setProjectMenuId(null)
+    onPanel('session')
   }
 
   return (
@@ -151,10 +161,10 @@ export function BrowserChrome({ panel, onPanel, onNewWorkspace, onConfigure, onR
                   aria-expanded={!collapsed}
                   title={`${project.name} — ${project.projectRoot}\n${running} running${hasUnread ? ' · New output' : ''}\nRight-click for project actions`}
                   onClick={() => project.terminals.length ? useStore.getState().toggleProjectCollapsed(project.id) : useStore.getState().selectWorkspace(project.id)}
-                  onContextMenu={(event) => { event.preventDefault(); onPanel('project'); setProjectMenuId(project.id) }}
+                  onContextMenu={(event) => { event.preventDefault(); setProjectMenuId(project.id); setSessionMenuTerminalId(null); onPanel('project') }}
                   onKeyDown={(event) => {
                     if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') {
-                      event.preventDefault(); onPanel('project'); setProjectMenuId(project.id)
+                      event.preventDefault(); setProjectMenuId(project.id); setSessionMenuTerminalId(null); onPanel('project')
                     }
                   }}
                 >
@@ -168,11 +178,28 @@ export function BrowserChrome({ panel, onPanel, onNewWorkspace, onConfigure, onR
                     {project.terminals.map((terminal) => {
                       const selected = project.id === workspace?.id && terminal.id === activeTerminalId
                       return (
-                        <div className={`browser-tab ${selected ? 'browser-tab--active' : ''}`} key={terminal.id}>
-                          <button type="button" role="tab" aria-label={terminal.title} aria-description={unread[terminal.id] ? 'New output' : undefined} aria-selected={selected} aria-controls="workspace-terminal" tabIndex={selected ? 0 : -1}
-                            ref={selected ? selectedTab : undefined} title={terminalDescription(terminal, project)}
+                        <div
+                          className={`browser-tab ${selected ? 'browser-tab--active' : ''}`}
+                          key={terminal.id}
+                          onContextMenu={(event) => openSessionMenu(event, project.id, terminal.id)}
+                        >
+                          <button
+                            type="button"
+                            role="tab"
+                            aria-label={terminal.title}
+                            aria-description={unread[terminal.id] ? 'New output' : undefined}
+                            aria-selected={selected}
+                            aria-controls="workspace-terminal"
+                            tabIndex={selected ? 0 : -1}
+                            ref={selected ? selectedTab : undefined}
+                            title={`${terminalDescription(terminal, project)}\nRight-click for session actions`}
                             onClick={() => selectTab(terminal.id)}
+                            onContextMenu={(event) => openSessionMenu(event, project.id, terminal.id)}
                             onKeyDown={(event) => {
+                              if ((event.shiftKey && event.key === 'F10') || event.key === 'ContextMenu') {
+                                openSessionMenu(event, project.id, terminal.id)
+                                return
+                              }
                               if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
                               event.preventDefault()
                               const current = project.terminals.findIndex((t) => t.id === terminal.id)
@@ -180,13 +207,19 @@ export function BrowserChrome({ panel, onPanel, onNewWorkspace, onConfigure, onR
                                 : (current + (event.key === 'ArrowLeft' ? -1 : 1) + project.terminals.length) % project.terminals.length
                               const target = project.terminals[next]
                               if (target) selectTab(target.id, true)
-                            }}>
+                            }}
+                          >
                             <TerminalWindowIcon size={16} aria-hidden="true" />
                             <span className="browser-tab__title">{terminal.title}</span>
                             {unread[terminal.id] && <span className="tab-unread" aria-label="New output" />}
                           </button>
-                          <button type="button" className="browser-tab__close" aria-label={`Close session ${terminal.title}`} title="Close session"
-                            onClick={() => { useStore.getState().selectWorkspace(project.id); useStore.getState().requestTerminalClose(terminal.id) }}>
+                          <button
+                            type="button"
+                            className="browser-tab__close"
+                            aria-label={`Close session ${terminal.title}`}
+                            title="Close session"
+                            onClick={() => { useStore.getState().selectWorkspace(project.id); useStore.getState().requestTerminalClose(terminal.id) }}
+                          >
                             <XIcon size={13} />
                           </button>
                         </div>
@@ -209,20 +242,110 @@ export function BrowserChrome({ panel, onPanel, onNewWorkspace, onConfigure, onR
         <div className="browser-toolbar__context">
           <FolderIcon size={18} aria-hidden="true" />
           <span className="browser-toolbar__path" title={active?.cwd ?? workspace?.projectRoot}>{active?.cwd ?? workspace?.projectRoot ?? 'Open a saved project to get started'}</span>
-          {git && <span className="browser-toolbar__branch" title={git.root}><GitBranchIcon size={16} /><span>{git.branch}</span></span>}
+          {git && (
+            <>
+              <span className="browser-toolbar__branch" title={git.root}><GitBranchIcon size={16} /><span>{git.branch}</span></span>
+              <ChangesButton workspaceId={workspace?.id} dialogOpen={changesOpen} onClick={onChanges} />
+            </>
+          )}
         </div>
         {active && <StatusBadge {...(sessions[active.id] ? { session: sessions[active.id] } : {})} />}
         <button type="button" className="toolbar-action" disabled={!active} aria-label={currentSplit ? 'Return to single terminal' : 'Split terminal'}
           onClick={() => currentSplit ? onSplit(null) : togglePanel('split')}><ColumnsIcon size={18} />{currentSplit ? 'Single' : 'Split'}</button>
         <button type="button" className="icon-button" aria-label="Search terminal" title="Search terminal buffer" disabled={!active} onClick={onSearch}><MagnifyingGlassIcon size={19} /></button>
-        <button type="button" className="icon-button" aria-label="More actions" title="Session and project actions" aria-expanded={panel === 'more'} onClick={() => togglePanel('more')}><DotsThreeIcon size={22} /></button>
       </header>
 
       {panel === 'project' && projectMenu && (
         <ChromePopover title={projectMenu.name} onClose={closePopup}>
-          <button type="button" onClick={() => { useStore.getState().selectWorkspace(projectMenu.id); closePopup() }}>Focus project</button>
-          <button type="button" onClick={() => { useStore.getState().selectWorkspace(projectMenu.id); closePopup(); onRenameWorkspace() }}>Rename project</button>
-          <button type="button" aria-label="Close project" aria-description="Sessions keep running" onClick={() => { useStore.getState().closeProject(projectMenu.id); closePopup() }}>Close project <small>Sessions keep running</small></button>
+          <div className="chrome-popover__list">
+            <button type="button" onClick={() => { useStore.getState().selectWorkspace(projectMenu.id); closePopup() }}>Focus project</button>
+            <button type="button" onClick={() => { useStore.getState().selectWorkspace(projectMenu.id); closePopup(); togglePanel('new') }}><PlusIcon size={17} /> New session…</button>
+            <button type="button" onClick={() => { useStore.getState().selectWorkspace(projectMenu.id); closePopup(); onRenameWorkspace() }}>Rename project</button>
+            <button type="button" aria-label="Close project" aria-description="Sessions keep running" onClick={() => { useStore.getState().closeProject(projectMenu.id); closePopup() }}>Close project <small>Sessions keep running</small></button>
+            <div className="chrome-popover__divider" />
+            <button type="button" onClick={() => { closePopup(); onSettings() }}>Settings</button>
+            <button type="button" onClick={() => { closePopup(); onAbout() }}>About Elena</button>
+          </div>
+        </ChromePopover>
+      )}
+      {panel === 'session' && sessionMenuTerminal && (
+        <ChromePopover title={sessionMenuTerminal.title} onClose={closePopup}>
+          <div className="chrome-popover__list">
+            <button type="button" onClick={() => startSession(sessionMenuTerminal.id)}>
+              {sessions[sessionMenuTerminal.id] ? 'Restart' : 'Start'} session
+            </button>
+            <button
+              type="button"
+              disabled={!['running', 'starting'].includes(sessions[sessionMenuTerminal.id]?.status ?? '')}
+              onClick={() => {
+                void useStore.getState().stopTerminal(sessionMenuTerminal.id)
+                closePopup()
+              }}
+            >
+              Stop session
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                closePopup()
+                useStore.getState().focusTerminal(sessionMenuTerminal.id)
+                onRenameTerminal()
+              }}
+            >
+              Rename session
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                void useStore.getState().detachTerminal(sessionMenuTerminal.id)
+                closePopup()
+              }}
+            >
+              Open in new window
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const termEntry = acquireTerminal(sessionMenuTerminal.id, {
+                  scrollback: useStore.getState().settings.scrollback,
+                  onOutput: () => {}
+                }).term
+                closePopup()
+                requestAnimationFrame(() => {
+                  termEntry.focus()
+                  termEntry.selectAll()
+                })
+              }}
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const termEntry = acquireTerminal(sessionMenuTerminal.id, {
+                  scrollback: useStore.getState().settings.scrollback,
+                  onOutput: () => {}
+                }).term
+                closePopup()
+                requestAnimationFrame(() => {
+                  termEntry.clear()
+                  termEntry.focus()
+                })
+              }}
+            >
+              Clear terminal
+            </button>
+            <div className="chrome-popover__divider" />
+            <button
+              type="button"
+              onClick={() => {
+                useStore.getState().requestTerminalClose(sessionMenuTerminal.id)
+                closePopup()
+              }}
+            >
+              Close session
+            </button>
+          </div>
         </ChromePopover>
       )}
       {(panel === 'saved' || panel === 'tabs') && (
@@ -281,34 +404,6 @@ export function BrowserChrome({ panel, onPanel, onNewWorkspace, onConfigure, onR
             {workspace.terminals.length < 2 && <p className="chrome-popover__empty">Add another session to split this view.</p>}
           </div>
           <button type="button" onClick={() => togglePanel('new')}><PlusIcon size={17} /> Add session…</button>
-        </ChromePopover>
-      )}
-      {panel === 'more' && (
-        <ChromePopover title="Actions" onClose={closePopup}>
-          <div className="chrome-popover__list">
-            <button type="button" disabled={!active} onClick={start}>{active && sessions[active.id] ? 'Restart' : 'Start'} session</button>
-            <button type="button" disabled={!active || !['running', 'starting'].includes(sessions[active.id]?.status ?? '')} onClick={() => { if (active) void useStore.getState().stopTerminal(active.id); closePopup() }}>Stop session</button>
-            <button type="button" disabled={!active} onClick={() => { closePopup(); onRenameTerminal() }}>Rename session</button>
-            <button type="button" disabled={!active} onClick={() => { if (active) void useStore.getState().detachTerminal(active.id); closePopup() }}>Open in new window</button>
-            <button type="button" disabled={!active} onClick={() => { if (active) useStore.getState().requestTerminalClose(active.id); closePopup() }}>Close session</button>
-            <button type="button" disabled={!active} onClick={() => {
-              const terminal = active && acquireTerminal(active.id, { scrollback: useStore.getState().settings.scrollback, onOutput: () => {} }).term
-              closePopup()
-              requestAnimationFrame(() => { if (terminal) { terminal.focus(); terminal.selectAll() } })
-            }}>Select all</button>
-            <button type="button" disabled={!active} onClick={() => {
-              const terminal = active && acquireTerminal(active.id, { scrollback: useStore.getState().settings.scrollback, onOutput: () => {} }).term
-              closePopup()
-              requestAnimationFrame(() => { if (terminal) { terminal.clear(); terminal.focus() } })
-            }}>Clear terminal</button>
-            <div className="chrome-popover__divider" />
-            <ChangesButton workspaceId={workspace?.id} dialogOpen={changesOpen} onClick={() => { closePopup(); onChanges() }} />
-            <button type="button" disabled={!workspace} onClick={() => { closePopup(); onRenameWorkspace() }}>Rename project</button>
-            <button type="button" aria-label="Close project" aria-description="Sessions keep running" disabled={!workspace} onClick={() => { if (workspace) useStore.getState().closeProject(workspace.id); closePopup() }}>Close project <small>Sessions keep running</small></button>
-            <div className="chrome-popover__divider" />
-            <button type="button" onClick={() => { closePopup(); onSettings() }}>Settings</button>
-            <button type="button" onClick={() => { closePopup(); onAbout() }}>About Elena</button>
-          </div>
         </ChromePopover>
       )}
     </>

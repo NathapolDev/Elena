@@ -8,14 +8,28 @@ export function launchTestApp(userData: string): Promise<ElectronApplication> {
     cwd: process.cwd(), env: { ...process.env, ELENA_E2E: '1' } })
 }
 
+export async function openProjectActions(page: Page): Promise<void> {
+  await page.locator('.project-group--active .project-group__label, .project-group__label').first().click({ button: 'right' })
+  await expect(page.locator('.chrome-popover[role="dialog"]')).toBeVisible()
+}
+
+export async function openSessionActions(page: Page): Promise<void> {
+  await page.locator('.browser-tab--active [role="tab"], .browser-tab [role="tab"]').first().click({ button: 'right' })
+  await expect(page.locator('.chrome-popover[role="dialog"]')).toBeVisible()
+}
+
 export async function openActions(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'More actions', exact: true }).click()
-  await expect(page.getByRole('dialog', { name: 'Actions', exact: true })).toBeVisible()
+  await openSessionActions(page)
 }
 
 export async function action(page: Page, name: string): Promise<void> {
-  await openActions(page)
-  await page.getByRole('dialog', { name: 'Actions', exact: true }).getByRole('button', { name, exact: true }).click()
+  const projectActions = ['Rename project', 'Close project', 'Focus project', 'About Elena', 'Settings']
+  if (projectActions.includes(name)) {
+    await openProjectActions(page)
+  } else {
+    await openSessionActions(page)
+  }
+  await page.locator('.chrome-popover[role="dialog"]').getByRole('button', { name, exact: true }).click()
 }
 
 export async function configureSession(page: Page): Promise<void> {
